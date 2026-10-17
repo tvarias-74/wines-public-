@@ -269,9 +269,27 @@ const BOXES: { name: string; material: BoxMaterial; capacity: number }[] = [
   { name: 'Carton — Kyma Santorini', material: 'carton', capacity: 12 },
 ];
 
+/** The first id prefix (`sample-`, `sample-2-`, …) that nothing in the cellar uses yet, so a second batch can never repeat an id. */
+function freePrefix(base: CellarData): string {
+  const ids = [
+    ...base.groups, ...base.producers, ...base.bottlings, ...base.vintages, ...base.purchases,
+    ...base.consumptions, ...base.locations, ...base.reviews,
+  ].map((x) => x.id);
+  for (let gen = 1; ; gen++) {
+    const prefix = gen === 1 ? SAMPLE_PREFIX : `${SAMPLE_PREFIX}${gen}-`;
+    if (!ids.some((i) => i.startsWith(prefix))) return prefix;
+  }
+}
+
+/**
+ * The demo wines added to `base`. If the cellar already has storage places (yours, or demo places that
+ * now hold bottles of yours) the demo wines come without places, rather than being put into them.
+ */
 export function buildSampleData(base: CellarData): CellarData {
   let n = 0;
-  const id = (kind: string) => `${SAMPLE_PREFIX}${kind}-${++n}`;
+  const prefix = freePrefix(base);
+  const withLayout = base.locations.length === 0;
+  const id = (kind: string) => `${prefix}${kind}-${++n}`;
   const groups: Group[] = [];
   const producers: Producer[] = [];
   const bottlings: Bottling[] = [];
@@ -349,8 +367,10 @@ export function buildSampleData(base: CellarData): CellarData {
   }
 
   const locations: Location[] = [];
-  for (let d = 1; d <= 50; d++) locations.push({ id: `${SAMPLE_PREFIX}loc-${d}`, name: `Division ${d}`, kind: 'division', capacity: 15 });
-  BOXES.forEach((b, i) => locations.push({ id: `${SAMPLE_PREFIX}box-${i + 1}`, name: b.name, kind: 'box', material: b.material, capacity: b.capacity }));
+  if (withLayout) {
+    for (let d = 1; d <= 50; d++) locations.push({ id: `${prefix}loc-${d}`, name: `Division ${d}`, kind: 'division', capacity: 15 });
+    BOXES.forEach((b, i) => locations.push({ id: `${prefix}box-${i + 1}`, name: b.name, kind: 'box', material: b.material, capacity: b.capacity }));
+  }
 
   let data: CellarData = {
     ...base,
@@ -365,6 +385,8 @@ export function buildSampleData(base: CellarData): CellarData {
     placements: base.placements,
     reviews: [...base.reviews, ...reviews],
   };
+
+  if (!withLayout) return data;
 
   // Floor boxes first (explicit), then everything else into divisions, keeping each wine together.
   for (const plan of boxPlans) {

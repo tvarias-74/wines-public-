@@ -53,7 +53,8 @@ export function PlacementPicker({
     setRows(suggestion.plan.map((p) => ({ key: nextKey.current++, locationId: p.locationId, qty: String(p.quantity) })));
   }, [suggestion]);
 
-  const plan: PlacementInput[] = later ? [] : rows.map((r) => ({ locationId: r.locationId, quantity: Number(r.qty) || 0 })).filter((p) => p.locationId && p.quantity > 0);
+  // With no bottles to place (the count was set to 0), nothing is planned, whatever rows were left behind.
+  const plan: PlacementInput[] = later || quantity < 1 ? [] : rows.map((r) => ({ locationId: r.locationId, quantity: Number(r.qty) || 0 })).filter((p) => p.locationId && p.quantity > 0);
   const total = plan.reduce((n, p) => n + p.quantity, 0);
 
   const problem = useMemo(() => {
@@ -95,9 +96,9 @@ export function PlacementPicker({
       </div>
       {!later && (
         <>
-          {rows.map((r) => (
+          {rows.map((r, i) => (
             <div className="placement-row" key={r.key}>
-              <select aria-label="Place" value={r.locationId} onChange={(e) => edit(r.key, { locationId: e.target.value })}>
+              <select aria-label={`Place ${i + 1}`} value={r.locationId} onChange={(e) => edit(r.key, { locationId: e.target.value })}>
                 <option value="">Choose a place…</option>
                 {fills.map((f) => (
                   <option key={f.location.id} value={f.location.id}>
@@ -105,8 +106,8 @@ export function PlacementPicker({
                   </option>
                 ))}
               </select>
-              <input aria-label="Bottles in this place" className="qty-input" inputMode="numeric" value={r.qty} onChange={(e) => edit(r.key, { qty: e.target.value.replace(/\D/g, '') })} />
-              <button type="button" className="btn btn-quiet btn-icon btn-sm" aria-label="Remove this place" onClick={() => { touched.current = true; setRows((rs) => rs.filter((x) => x.key !== r.key)); }}>
+              <input aria-label={`Bottles in place ${i + 1}`} className="qty-input" inputMode="numeric" value={r.qty} onChange={(e) => edit(r.key, { qty: e.target.value.replace(/\D/g, '') })} />
+              <button type="button" className="btn btn-quiet btn-icon btn-sm" aria-label={`Remove place ${i + 1}`} onClick={() => { touched.current = true; setRows((rs) => rs.filter((x) => x.key !== r.key)); }}>
                 <Icon name="x" size={16} />
               </button>
             </div>

@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { addCustomImpression, hasSampleData, markBackedUp, removeCustomImpression, removeSampleData, updateSettings } from '../../domain/actions';
+import { addCustomImpression, hasSampleData, hasSampleLeftovers, markBackedUp, removeCustomImpression, removeSampleData, updateSettings } from '../../domain/actions';
 import { exportInventoryCsv, importInventoryCsv, type CsvImportReport } from '../../domain/portability';
 import { CURRENCIES, emptyData, type CellarData } from '../../domain/types';
 import { decodeText, formatDate, pluralize, toIsoDate } from '../../domain/text';
-import { createBackupFile, photoStats, readBackupFile, storeBackupImages } from '../../storage/backupFiles';
+import { createBackupFile, photoStats } from '../../storage/backupFiles';
+import { deleteAllImages } from '../../storage/images';
 import { applyTheme, isPersisted, readTheme, type ThemePreference } from '../../storage/storage';
 import { useCellar } from '../../storage/store';
 import { Icon } from '../Icon';
 import { Card, Field, PageHead } from '../components';
 import { downloadFile, formatBytes } from '../format';
-import { sampleWines } from '../loadSample';
+import { addSampleWines } from '../loadSample';
 import { Modal, useConfirm, useToast } from '../overlays';
+import { useRestore } from '../restore';
 
 function Section({ id, title, subtitle, children }: { id?: string; title: string; subtitle?: ReactNode; children: ReactNode }) {
   return (
@@ -35,7 +37,8 @@ interface CsvFile {
 }
 
 export function Settings() {
-  const { data, apply, replaceAll, readOnly } = useCellar();
+  const { data, apply, replaceAll, flushNow, readOnly } = useCellar();
+  const restore = useRestore();
   const confirm = useConfirm();
   const toast = useToast();
   const [theme, setTheme] = useState<ThemePreference>(readTheme);
@@ -77,39 +80,7 @@ export function Settings() {
   const restoreBackup = async (file: File) => {
     setBusy('restore');
     try {
-      const parsed = await readBackupFile(file);
-      if (!parsed.ok) {
-        toast(parsed.error, { tone: 'error' });
-        return;
-      }
-      const incoming = parsed.data;
-      const ok = await confirm({
-        title: 'Replace your cellar with this backup?',
-        message: (
-          <>
-            <p>
-              <strong>{file.name}</strong> contains {pluralize(incoming.vintages.length, 'wine')}, {pluralize(incoming.purchases.length, 'purchase')}, {pluralize(incoming.consumptions.length, 'tasting/removal')}, {pluralize(incoming.locations.length, 'storage place')}
-              {parsed.images.length ? ` and ${pluralize(parsed.images.length, 'label photo')}` : ''}.
-            </p>
-            {parsed.warnings.map((w) => (
-              <p key={w}>{w}</p>
-            ))}
-            <p>
-              Your current cellar ({pluralize(wineCount, 'wine')}) will be <strong>replaced</strong>. Back it up first if you might want it again.
-            </p>
-          </>
-        ),
-        confirmLabel: 'Replace my cellar',
-        danger: wineCount > 0,
-      });
-      if (!ok) return;
-      // Photos go in first: if that fails, nothing about the cellar has changed.
-      await storeBackupImages(parsed.images);
-      replaceAll(incoming);
-      void photoStats().then(setPhotos, () => undefined);
-      toast('Backup restored');
-    } catch (e) {
-      toast(e instanceof Error ? `The backup could not be restored: ${e.message}` : 'The backup could not be restored', { tone: 'error' });
+      if (await restore(file)) void photoStats().then(setPhotos, () => undefined);
     } finally {
       setBusy(null);
     }
@@ -151,7 +122,14 @@ export function Settings() {
     });
     if (ok) {
       replaceAll(emptyData());
-      toast('Your cellar was cleared');
+      // The pictures go too, but only once the empty cellar is safely saved: until then they are all that is left of the real one.
+      if (await flushNow()) {
+        await deleteAllImages().catch(() => undefined);
+        void photoStats().then(setPhotos, () => undefined);
+        toast('Your cellar was cleared');
+      } else {
+        toast('Cleared on this page, but that could not be saved — see the message at the top.', { tone: 'error' });
+      }
     }
   };
 
@@ -353,6 +331,8 @@ export function Settings() {
             >
               Remove sample wines
             </button>
+          ) : hasSampleLeftovers(data) ? (
+            <p className="card-sub">Some sample wines became yours when you added bottles or notes to them, so the sample can’t be added again without doubling them up.</p>
           ) : (
             <button
               className="btn"
@@ -360,7 +340,7 @@ export function Settings() {
               onClick={async () => {
                 setBusy('sample');
                 try {
-                  replaceAll(await sampleWines(data));
+                  await addSampleWines(apply, data);
                   toast('Sample wines added');
                 } finally {
                   setBusy(null);

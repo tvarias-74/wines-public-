@@ -178,6 +178,12 @@ export interface WriteResult {
 export async function writeStored(data: CellarData, expectedRev: number): Promise<WriteResult> {
   try {
     const rev = await idbWrite(data, expectedRev);
+    // The main store is the home again: an older fallback copy would only ever confuse a later load.
+    try {
+      if (lsRev() <= rev) localStorage.removeItem(LS_KEY);
+    } catch {
+      /* it will be superseded by revision anyway */
+    }
     return { rev, usedFallback: false };
   } catch (e) {
     if (e instanceof StaleError) throw e;

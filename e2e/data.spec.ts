@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { addWineViaForm, expect, loadSample, test } from './fixtures';
+import { addWineViaForm, expect, loadSample, settle, test } from './fixtures';
 
 test('backup with photos → delete everything → restore brings the cellar and its labels back', async ({ page }) => {
   await loadSample(page);
@@ -45,14 +45,41 @@ test('a backup without photos is plain JSON that holds the whole cellar', async 
   expect(json.schema).toBe(2);
   expect(json.vintages.length).toBe(32);
   expect(json.locations.length).toBe(52);
-  expect(json.vintages.every((v: { images?: unknown }) => v.images === undefined)).toBe(true); // no references to pictures that aren't in the file
+  expect(json.vintages.some((v: { images?: unknown }) => v.images !== undefined)).toBe(true); // it still names the pictures, it just doesn't carry them
 
   await page.getByRole('button', { name: 'Delete all my data' }).click();
   await page.getByRole('button', { name: 'Delete everything' }).click();
   await page.locator('input[type=file]').first().setInputFiles(file);
+  await expect(page.getByRole('dialog')).toContainText('no photos'); // the pictures were deleted with everything else, and it says so
   await page.getByRole('button', { name: 'Replace my cellar' }).click();
   await page.goto('/#/');
   await expect(page.locator('.hero-value')).toHaveText('199');
+});
+
+test('restoring a photo-less backup on the same device keeps the labels that are still here', async ({ page }) => {
+  await loadSample(page);
+  await page.goto('/#/settings');
+  await page.getByLabel(/Include label photos/).uncheck();
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download backup' }).click()]);
+  const file = await download.path();
+
+  // change the cellar, then go back to the backup, as one does to undo a mistake
+  await page.goto('/#/cellar?view=wines&q=Santorini 2024');
+  await page.locator('.wine-row-main').first().click();
+  await page.getByRole('button', { name: 'Drink a bottle' }).click();
+  await page.getByRole('button', { name: 'Confirm' }).click();
+  await settle(page);
+  await page.goto('/#/settings');
+  await page.locator('input[type=file]').first().setInputFiles(file);
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).not.toContainText('no photos'); // nothing is lost: the pictures are on this device
+  await dialog.getByRole('button', { name: 'Replace my cellar' }).click();
+  await expect(page.locator('.toast', { hasText: 'Backup restored' })).toBeVisible();
+
+  await page.goto('/#/cellar?view=wines&layout=labels');
+  await expect(page.locator('.label-tile img.label-img')).toHaveCount(32);
+  const first = page.locator('.label-tile img.label-img').first();
+  await expect.poll(() => first.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBeGreaterThan(0);
 });
 
 test('an old (version 1) backup is upgraded without inventing anything', async ({ page }) => {

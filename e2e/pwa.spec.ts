@@ -14,7 +14,7 @@ test('installs from a sub-path, and works offline — including edits', async ({
 
   await page.goto(BASE);
   await expect(page.locator('.welcome')).toBeVisible();
-  await expect(page).toHaveTitle('Cellar Book');
+  await expect(page).toHaveTitle(/Cellar Book/);
 
   // the service worker is scoped to the sub-path, not the domain
   const scope = await page.evaluate(async () => (await navigator.serviceWorker.ready).scope);

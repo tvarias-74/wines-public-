@@ -85,15 +85,25 @@ describe('backup with photos', () => {
 });
 
 describe('backup without photos', () => {
-  it('is plain JSON with no photo references', async () => {
+  it('is plain JSON that still names the photos, without carrying them', async () => {
     const { data } = cellar();
     const json = packJsonBackup(data);
-    expect(json).not.toContain('img-a-front');
-    const out = await unpackBackup(new TextEncoder().encode(json));
+    expect(json).toContain('img-a-front');
+    const elsewhere = await unpackBackup(new TextEncoder().encode(json));
+    if (!elsewhere.ok) throw new Error(elsewhere.error);
+    expect(elsewhere.format).toBe('json');
+    expect(elsewhere.images).toEqual([]);
+    expect(elsewhere.data.vintages.some((v) => v.images)).toBe(false); // nothing dangles on a device without the pictures
+    expect(elsewhere.warnings.join(' ')).toMatch(/no photos/);
+  });
+
+  it('restored on the device that still holds the pictures, links them again with no warning', async () => {
+    const { data } = cellar();
+    const here = new Set(['img-a-front', 'img-a-back', 'img-b-front']);
+    const out = await unpackBackup(new TextEncoder().encode(packJsonBackup(data)), (id) => here.has(id));
     if (!out.ok) throw new Error(out.error);
-    expect(out.format).toBe('json');
-    expect(out.images).toEqual([]);
-    expect(out.data.vintages.some((v) => v.images)).toBe(false);
+    expect(out.warnings).toEqual([]);
+    expect(out.data.vintages.filter((v) => v.images)).toHaveLength(2);
   });
 
   it('keeps a reference only when the photo is already on this device', async () => {
@@ -112,5 +122,18 @@ describe('backup without photos', () => {
   it('keepOnlyImages leaves untouched data identical', () => {
     const data = buildSampleData(emptyData());
     expect(keepOnlyImages(data, new Set())).toBe(data);
+  });
+});
+
+describe('an archive that was opened and zipped again', () => {
+  it('still restores when everything sits inside one folder', async () => {
+    const { data } = cellar();
+    const zip = packBackup(data, [img('img-a-front'), img('img-a-back'), img('img-b-front')]);
+    const entries = await (await import('./zip')).readZip(zip);
+    const wrapped = createZip(entries.map((e) => ({ name: `Cellar Book backup/${e.name}`, data: e.data })));
+    const out = await unpackBackup(wrapped);
+    if (!out.ok) throw new Error(out.error);
+    expect(out.images.map((i) => i.id).sort()).toEqual(['img-a-back', 'img-a-front', 'img-b-front']);
+    expect(out.warnings).toEqual([]);
   });
 });

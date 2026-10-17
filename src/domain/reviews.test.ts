@@ -90,7 +90,7 @@ describe('reviews', () => {
   });
 });
 
-import { setVintageWindow } from './actions';
+import { adoptWindow, peakFitsWindow, setVintageWindow } from './actions';
 import { buildRows } from './inventory';
 import { NOW } from './helpers.test-util';
 
@@ -113,5 +113,43 @@ describe('using a critic’s drinking window', () => {
     expect(setVintageWindow(data, id, { drinkFrom: 2035, drinkTo: 2030 }).ok).toBe(false);
     expect(setVintageWindow(data, id, {}).ok).toBe(false);
     expect(setVintageWindow(data, 'nope', { drinkFrom: 2030 }).ok).toBe(false);
+  });
+});
+
+describe('taking a critic’s window as yours, with your own peak', () => {
+  const wineWithPeak = () => add(emptyData(), { drinkFrom: 2020, drinkTo: 2035, peakFrom: 2025, peakTo: 2030 }, { quantity: 1 });
+
+  it('keeps your peak when it still sits inside the new window', () => {
+    const { data, id } = wineWithPeak();
+    const r = adoptWindow(data, id, { drinkFrom: 2022, drinkTo: 2040 });
+    if (!r.ok) throw new Error(r.error);
+    expect(r.data.vintages[0]).toMatchObject({ drinkFrom: 2022, drinkTo: 2040, peakFrom: 2025, peakTo: 2030, windowSource: 'manual' });
+    expect(r.peakCleared).toBe(false);
+  });
+
+  it('clears it, and says so, when the new window leaves the peak outside', () => {
+    const { data, id } = wineWithPeak();
+    for (const w of [{ drinkFrom: 2027, drinkTo: 2040 }, { drinkFrom: 2018, drinkTo: 2028 }, { drinkFrom: 2031, drinkTo: 2040 }]) {
+      const r = adoptWindow(data, id, w);
+      if (!r.ok) throw new Error(r.error);
+      expect(r.data.vintages[0], JSON.stringify(w)).not.toHaveProperty('peakFrom');
+      expect(r.peakCleared, JSON.stringify(w)).toBe(true);
+    }
+  });
+
+  it('copes with a critic who gives only one end', () => {
+    const { data, id } = wineWithPeak();
+    expect(peakFitsWindow(data.vintages[0]!, { drinkFrom: 2024 })).toBe(true);
+    expect(peakFitsWindow(data.vintages[0]!, { drinkFrom: 2026 })).toBe(false);
+    expect(peakFitsWindow(data.vintages[0]!, { drinkTo: 2032 })).toBe(true);
+    expect(peakFitsWindow(data.vintages[0]!, { drinkTo: 2028 })).toBe(false);
+    const r = adoptWindow(data, id, { drinkTo: 2040 });
+    expect(r.ok && r.data.vintages[0]).toMatchObject({ drinkTo: 2040, peakFrom: 2025 });
+  });
+
+  it('has nothing to clear when there was no peak', () => {
+    const { data, id } = add(emptyData(), {}, { quantity: 1 });
+    const r = adoptWindow(data, id, { drinkFrom: 2026, drinkTo: 2034 });
+    expect(r.ok && r.peakCleared).toBe(false);
   });
 });

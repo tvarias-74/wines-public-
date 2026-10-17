@@ -460,6 +460,27 @@ export function setVintageWindow(data: CellarData, vintageId: string, w: DrinkWi
   };
 }
 
+/** True when a vintage's own peak years (if it has any) still sit inside a new drinking window. */
+export function peakFitsWindow(v: Pick<Vintage, 'peakFrom' | 'peakTo'>, w: { drinkFrom?: number; drinkTo?: number }): boolean {
+  if (v.peakFrom === undefined && v.peakTo === undefined) return true;
+  if (w.drinkFrom !== undefined && ((v.peakFrom ?? w.drinkFrom) < w.drinkFrom || (v.peakTo ?? w.drinkFrom) < w.drinkFrom)) return false;
+  if (w.drinkTo !== undefined && ((v.peakTo ?? w.drinkTo) > w.drinkTo || (v.peakFrom ?? w.drinkTo) > w.drinkTo)) return false;
+  return true;
+}
+
+/**
+ * Takes a critic's drinking window as the wine's own. The peak you set yourself is kept when it still
+ * fits inside the new window, and cleared (never silently bent) when it doesn't.
+ */
+export function adoptWindow(data: CellarData, vintageId: string, w: { drinkFrom?: number; drinkTo?: number }): Result<{ data: CellarData; peakCleared: boolean }> {
+  const v = data.vintages.find((x) => x.id === vintageId);
+  if (!v) return fail('That wine no longer exists');
+  const keep = peakFitsWindow(v, w);
+  const hadPeak = v.peakFrom !== undefined || v.peakTo !== undefined;
+  const r = setVintageWindow(data, vintageId, keep ? { ...w, peakFrom: v.peakFrom, peakTo: v.peakTo } : w);
+  return r.ok ? { ok: true, data: r.data, peakCleared: hadPeak && !keep } : r;
+}
+
 /** Attaches (or, with `undefined`, detaches) a label photo. The image bytes live in the image store. */
 export function setVintageImage(data: CellarData, vintageId: string, side: 'front' | 'back', imageId: string | undefined): CellarData {
   return {
@@ -975,6 +996,14 @@ function isDemoVintage(data: CellarData, v: Vintage): boolean {
 
 export function hasSampleData(data: CellarData): boolean {
   return data.vintages.some((v) => isDemoVintage(data, v));
+}
+
+/**
+ * True when anything with a demo id is left, including demo wines that are yours now. Adding the demo
+ * again then would put a second "Château Belle-Rive" next to the first, so it is not offered.
+ */
+export function hasSampleLeftovers(data: CellarData): boolean {
+  return [data.groups, data.producers, data.bottlings, data.vintages, data.locations].some((list) => list.some((x) => isSampleId(x.id)));
 }
 
 /**

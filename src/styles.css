@@ -588,7 +588,8 @@ button {
   color: var(--ink);
 }
 
-.btn:disabled {
+.btn:disabled,
+.btn[aria-disabled='true'] {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -2987,4 +2988,29 @@ button.word[aria-pressed='true']::before {
   .wide-on-phone {
     grid-column: 1 / -1;
   }
+}
+
+/* ---- keyboard users ------------------------------------------------------------------------ */
+
+.main:focus {
+  outline: none;
+}
+
+.skip-link {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 50;
+  padding: 10px 14px;
+  border: 2px solid var(--accent);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  transform: translateY(-200%);
+}
+
+.skip-link:focus {
+  transform: none;
 }

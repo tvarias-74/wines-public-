@@ -81,7 +81,13 @@ export function Layout() {
                   <button className="btn btn-quiet btn-sm" onClick={() => setEditing(f.location)} aria-label={`Edit ${f.location.name}`}>
                     <Icon name="edit" size={16} />
                   </button>
-                  <button className="btn btn-quiet btn-sm" onClick={() => remove(f.location)} disabled={f.used > 0} aria-label={`Delete ${f.location.name}`} title={f.used > 0 ? 'Move the bottles out first' : undefined}>
+                  <button
+                    className="btn btn-quiet btn-sm"
+                    onClick={() => (f.used > 0 ? toast(`${f.location.name} still holds ${pluralize(f.used, 'bottle')}. Move them out first.`, { tone: 'error' }) : remove(f.location))}
+                    aria-label={`Delete ${f.location.name}`}
+                    aria-disabled={f.used > 0 || undefined}
+                    title={f.used > 0 ? 'Move the bottles out first' : undefined}
+                  >
                     <Icon name="trash" size={16} />
                   </button>
                 </span>

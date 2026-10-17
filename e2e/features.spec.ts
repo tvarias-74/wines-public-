@@ -36,7 +36,7 @@ test('set up divisions and a floor box, put wines away, and see the map fill up'
   await page.getByLabel('Bottling / cuvée').fill('Cuvée Une');
   await page.getByLabel('Vintage', { exact: true }).fill('2020');
   await page.getByLabel('Bottles', { exact: true }).fill('3');
-  await expect(page.getByLabel('Place').first().locator('option:checked')).toContainText(division);
+  await expect(page.getByLabel('Place 1', { exact: true }).locator('option:checked')).toContainText(division);
   await page.getByRole('button', { name: 'Add to cellar' }).click();
   await expect(page.locator('.detail-grid')).toBeVisible();
 
@@ -58,7 +58,7 @@ test('set up divisions and a floor box, put wines away, and see the map fill up'
   await page.getByLabel('Bottling / cuvée').fill('Cuvée Une');
   await page.getByLabel('Vintage', { exact: true }).fill('2021');
   await page.getByLabel('Bottles', { exact: true }).fill('2');
-  await page.getByLabel('Bottles in this place').first().fill('14');
+  await page.getByLabel('Bottles in place 1', { exact: true }).fill('14');
   await expect(page.locator('.placement-picker .field-error')).toContainText(/more than the 2 bottles|room for only/);
   await page.getByRole('button', { name: 'Add to cellar' }).click();
   await expect(page.locator('.field-error').first()).toBeVisible();

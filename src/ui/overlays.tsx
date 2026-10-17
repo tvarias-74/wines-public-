@@ -111,38 +111,54 @@ interface ToastItem extends ToastOptions {
 type ToastFn = (message: string, options?: ToastOptions) => void;
 const ToastContext = createContext<ToastFn | null>(null);
 
+/** One toast. Its clock stops while it is hovered or holds focus, so there is time to reach "Undo". */
+function ToastView({ toast, dismiss }: { toast: ToastItem; dismiss: (id: number) => void }) {
+  const [held, setHeld] = useState(false);
+  const ms = toast.tone === 'error' ? 10_000 : toast.action ? 12_000 : 4_000;
+  useEffect(() => {
+    if (held) return;
+    const t = setTimeout(() => dismiss(toast.id), ms);
+    return () => clearTimeout(t);
+  }, [held, ms, toast.id, dismiss]);
+  return (
+    <div
+      className={`toast${toast.tone === 'error' ? ' toast-error' : ''}`}
+      onMouseEnter={() => setHeld(true)}
+      onMouseLeave={() => setHeld(false)}
+      onFocus={() => setHeld(true)}
+      onBlur={() => setHeld(false)}
+    >
+      <span>{toast.message}</span>
+      {toast.action && (
+        <button
+          className="toast-action"
+          onClick={() => {
+            toast.action?.onClick();
+            dismiss(toast.id);
+          }}
+        >
+          {toast.action.label}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
   const nextId = useRef(1);
   const dismiss = useCallback((id: number) => setItems((l) => l.filter((t) => t.id !== id)), []);
-  const toast = useCallback<ToastFn>(
-    (message, options = {}) => {
-      const id = nextId.current++;
-      setItems((l) => [...l.slice(-2), { id, message, ...options }]);
-      setTimeout(() => dismiss(id), options.tone === 'error' ? 8000 : options.action ? 7000 : 4000);
-    },
-    [dismiss],
-  );
+  const toast = useCallback<ToastFn>((message, options = {}) => {
+    const id = nextId.current++;
+    setItems((l) => [...l.slice(-2), { id, message, ...options }]);
+  }, []);
   const value = useMemo(() => toast, [toast]);
   return (
     <ToastContext.Provider value={value}>
       {children}
       <div className="toasts" role="status" aria-live="polite">
         {items.map((t) => (
-          <div key={t.id} className={`toast${t.tone === 'error' ? ' toast-error' : ''}`}>
-            <span>{t.message}</span>
-            {t.action && (
-              <button
-                className="toast-action"
-                onClick={() => {
-                  t.action?.onClick();
-                  dismiss(t.id);
-                }}
-              >
-                {t.action.label}
-              </button>
-            )}
-          </div>
+          <ToastView key={t.id} toast={t} dismiss={dismiss} />
         ))}
       </div>
     </ToastContext.Provider>

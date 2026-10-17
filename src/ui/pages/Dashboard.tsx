@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { hasSampleData, needsBackup, removeSampleData } from '../../domain/actions';
 import { NOT_SET, forecastByYear, purchaseEntries, wineTitle, type WineRow } from '../../domain/inventory';
-import { sampleWines } from '../loadSample';
+import { addSampleWines } from '../loadSample';
 import { formatMoney, pluralize } from '../../domain/text';
 import { STATUS_LABEL, STATUS_ORDER, formatWindow, describeStatus, windowOf } from '../../domain/window';
 import { useCellar, useRows } from '../../storage/store';
@@ -18,7 +18,7 @@ const FORECAST_STATUSES = STATUS_ORDER.filter((s) => s !== 'unknown');
 
 export function Dashboard() {
   const { data, rows, stats, now } = useRows();
-  const { apply, replaceAll } = useCellar();
+  const { apply } = useCellar();
   const confirm = useConfirm();
   const [drinking, setDrinking] = useState<WineRow | null>(null);
   const year = now.getFullYear();
@@ -61,7 +61,7 @@ export function Dashboard() {
               <Link className="btn" to="/settings#import">
                 <Icon name="upload" size={18} /> Import a spreadsheet or backup
               </Link>
-              <button className="btn" onClick={async () => replaceAll(await sampleWines())}>
+              <button className="btn" onClick={() => addSampleWines(apply, data)}>
                 Explore with sample wines
               </button>
             </div>

@@ -12,6 +12,8 @@ export interface StoredImage {
   width: number;
   height: number;
   createdAt: number;
+  /** When a cleanup pass first found no wine using this photo. Cleared again as soon as one does. */
+  unusedSince?: number;
 }
 
 async function withStore<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore, done: (v: T) => void, fail: (e: unknown) => void) => void): Promise<T> {
@@ -80,19 +82,68 @@ export function listImages(): Promise<{ id: string; createdAt: number; bytes: nu
   });
 }
 
-/** Photos taken but not (yet) attached to a saved wine are kept this long before being cleaned up. */
-export const ORPHAN_GRACE_MS = 10 * 60 * 1000;
+/**
+ * A photo nobody refers to is only deleted after being unused for this long. "Unused" is judged from
+ * the cellar in memory, which can be momentarily wrong (a backup restored without photos, an old copy
+ * loaded, a replaced cellar), so a deletion must never be the first thing that happens when the
+ * cellar changes: the photo is only marked, and the mark is cleared the moment a wine uses it again.
+ */
+export const UNUSED_QUARANTINE_MS = 30 * 24 * 60 * 60 * 1000;
 
-/** Deletes photos that no wine refers to, unless they are brand new. Returns how many were removed. */
-export async function collectUnusedImages(referenced: Set<string>, now = Date.now()): Promise<number> {
-  const all = await listImages();
-  const doomed = all.filter((i) => !referenced.has(i.id) && now - i.createdAt > ORPHAN_GRACE_MS).map((i) => i.id);
-  if (doomed.length) {
-    await withStore<void>('readwrite', (store) => {
-      for (const id of doomed) store.delete(id);
-    });
+export interface CleanupPlan {
+  /** Newly found unused: start their clock. */
+  mark: string[];
+  /** In use again: reset their clock. */
+  unmark: string[];
+  /** Unused for the whole quarantine: delete. */
+  remove: string[];
+}
+
+/** Decides what a cleanup pass does. Pure, so the rules can be tested without a browser. */
+export function planCleanup(images: { id: string; unusedSince?: number }[], referenced: Set<string>, now: number): CleanupPlan {
+  const plan: CleanupPlan = { mark: [], unmark: [], remove: [] };
+  for (const i of images) {
+    if (referenced.has(i.id)) {
+      if (i.unusedSince !== undefined) plan.unmark.push(i.id);
+    } else if (i.unusedSince === undefined || i.unusedSince > now) {
+      plan.mark.push(i.id);
+    } else if (now - i.unusedSince >= UNUSED_QUARANTINE_MS) {
+      plan.remove.push(i.id);
+    }
   }
-  return doomed.length;
+  return plan;
+}
+
+/** One cleanup pass over the photo store. Returns how many photos were deleted. */
+export function collectUnusedImages(referenced: Set<string>, now = Date.now()): Promise<number> {
+  return withStore<number>('readwrite', (store, done) => {
+    let removed = 0;
+    const req = store.openCursor();
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) return done(removed);
+      const img = cursor.value as StoredImage;
+      const id = String(cursor.key);
+      const plan = planCleanup([{ id, unusedSince: img.unusedSince }], referenced, now);
+      if (plan.remove.length) {
+        cursor.delete();
+        removed++;
+      } else if (plan.mark.length) {
+        cursor.update({ ...img, unusedSince: now });
+      } else if (plan.unmark.length) {
+        const { unusedSince: _cleared, ...rest } = img;
+        cursor.update(rest);
+      }
+      cursor.continue();
+    };
+  });
+}
+
+/** Removes every photo at once. Only for "delete everything", which the user has confirmed. */
+export function deleteAllImages(): Promise<void> {
+  return withStore<void>('readwrite', (store) => {
+    store.clear();
+  });
 }
 
 export async function blobBytes(blob: Blob): Promise<Uint8Array> {

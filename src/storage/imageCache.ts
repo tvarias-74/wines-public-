@@ -32,8 +32,13 @@ export function acquireImageUrl(id: string, kind: Kind): Promise<string | null> 
   const key = keyOf(id, kind);
   let e = entries.get(key);
   if (!e) {
-    e = { url: load(id, kind), refs: 0 };
-    entries.set(key, e);
+    const fresh: Entry = { url: load(id, kind), refs: 0 };
+    e = fresh;
+    entries.set(key, fresh);
+    // A photo that could not be read (a hiccup, or it arrives with a restore a moment later) is looked for again next time.
+    void fresh.url.then((u) => {
+      if (u === null && entries.get(key) === fresh) entries.delete(key);
+    });
   }
   if (e.timer) clearTimeout(e.timer);
   e.timer = undefined;

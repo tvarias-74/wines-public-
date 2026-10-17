@@ -47,9 +47,13 @@ export function packBackup(data: CellarData, images: BundleImage[], now: Date = 
   ]);
 }
 
-/** The same cellar as plain JSON, with no photo references (there are no photos to go with them). */
+/**
+ * The same cellar as plain JSON. The photo references stay in it, although the pictures are not in the
+ * file: restoring on this device finds the pictures that are still here and links them again, and
+ * restoring anywhere else drops the references it can't back (and says so), so nothing dangles.
+ */
 export function packJsonBackup(data: CellarData, now: Date = new Date()): string {
-  return serializeBackup(keepOnlyImages(data, new Set()), now);
+  return serializeBackup(data, now);
 }
 
 export type Unpacked =
@@ -74,13 +78,16 @@ export async function unpackBackup(bytes: Uint8Array, hasLocalImage: (id: string
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : 'The ZIP file could not be read.' };
     }
-    const file = entries.find((e) => e.name === DATA_FILE);
+    // An archive re-zipped by a desktop tool often has everything inside one folder: accept that.
+    const folder = entries.some((e) => e.name === DATA_FILE) ? '' : (entries.find((e) => /^[^/]+\/cellar\.json$/.test(e.name))?.name.slice(0, -DATA_FILE.length) ?? '');
+    const inside = (name: string) => (folder && name.startsWith(folder) ? name.slice(folder.length) : name);
+    const file = entries.find((e) => inside(e.name) === DATA_FILE);
     if (!file) return { ok: false, error: 'This ZIP file does not contain a Cellar Book backup (there is no cellar.json inside).' };
     jsonText = decodeText(file.data).text;
     const fulls = new Map<string, Uint8Array>();
     const thumbs = new Map<string, Uint8Array>();
     for (const e of entries) {
-      const m = /^images\/([^/]+?)(\.thumb)?\.jpg$/.exec(e.name);
+      const m = /^images\/([^/]+?)(\.thumb)?\.jpg$/.exec(inside(e.name));
       if (!m || !SAFE_ID.test(m[1] as string)) continue;
       (m[2] ? thumbs : fulls).set(m[1] as string, e.data);
     }

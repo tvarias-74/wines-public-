@@ -50,7 +50,7 @@ When a new version is available, a banner offers **Update now**. Nothing reloads
 - **Remembered for you:** anything you typed before is offered again. When the winery and bottling already exist, their colour, origin and varieties are shown and locked (they are shared by all vintages), so you enter them once per bottling.
 - **Same wine again?** Typing a winery, bottling and vintage you already have (any capitalisation, with or without accents) adds the bottles to it instead of creating a duplicate.
 - **From a spreadsheet:** *Settings → Spreadsheet → Import a CSV*. You see a preview, including any rows that will be skipped and why, before anything is imported. See [CSV format](#csv-format).
-- **Try it first:** the welcome screen offers sample wines, removable at any time without touching your own.
+- **Try it first:** the welcome screen offers sample wines, removable at any time without touching your own. A sample wine you add bottles, tastings or reviews to becomes yours and stays when the samples are removed.
 
 ### Label photos
 
@@ -124,7 +124,9 @@ That has two consequences you should know about:
 - If the browser refuses to open its storage (common in private windows), the app says so and **never shows an empty cellar** that could be saved over the real one. You can retry, or carry on without saving, with a banner reminding you that nothing is kept.
 - If the main storage fails while you work, saving continues in a smaller fallback store and you are told.
 - If the stored data can't be understood, it is kept untouched and offered for download.
-- Photos that no wine uses any more are cleaned up after a grace period.
+- A picture is never deleted the moment something changes (a photo replaced or removed, a wine deleted, a backup restored): it stays on the device for 30 days after no wine uses it, so a mistake can be taken back, and only then is it cleaned up. *Remove* on a photo offers **Undo**. *Delete everything* removes the pictures at once, after the empty cellar is safely saved.
+- Before anything is written, the cellar is checked the way the app itself will read it back; a document that could not be loaded again is refused, so it can never replace the last good copy. Restoring a backup says it is done only once it is saved.
+- A half-filled form asks before you leave it (and before you close the tab), so photos taken in the cellar are not lost to a stray tap. If a screen ever crashes, you still get a button to download your cellar.
 
 ### Backup file vs. CSV
 
@@ -135,7 +137,7 @@ That has two consequences you should know about:
 | Includes purchase history and what you drank | Yes | No — one row per wine in stock |
 | Label photos | In the `.zip` (tick *Include label photos*) | No |
 
-A backup with photos is a `.zip` holding `cellar.json` and the pictures; without photos it is a plain `.json`. Restoring accepts both, checks them completely before changing anything, and upgrades backups made by the first version of the app (a sparkling wine from then keeps no colour, because it never said which).
+A backup with photos is a `.zip` holding `cellar.json` and the pictures; without photos it is a plain `.json` that still remembers which picture belongs to which wine, so restoring it on the same device links the pictures that are still there (anywhere else, those wines simply have none, and you are told). Restoring accepts both, and a `.zip` that was opened and zipped again inside a folder, checks them completely before changing anything, and upgrades backups made by the first version of the app (a sparkling wine from then keeps no colour, because it never said which).
 
 ### CSV format
 

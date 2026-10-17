@@ -108,11 +108,26 @@ export function Cellar() {
   const clearFilters = () => update(Object.fromEntries(FILTER_KEYS.map((k) => [k, null])));
 
   // The box updates instantly; the URL (and so the whole page) follows once typing pauses.
+  // The URL can lag a moment behind the box (the router applies changes as transitions), so the box only
+  // takes a value from the URL that the box did not put there itself: otherwise typing "ab" slowly could
+  // be reset to "a" when the URL catches up with the first letter.
   const [queryInput, setQueryInput] = useState(query);
-  useEffect(() => setQueryInput(query), [query]);
+  const pushed = useRef<string[]>([query]); // what this box has put into the URL, oldest first
+  useEffect(() => {
+    const at = pushed.current.indexOf(query);
+    if (at >= 0) {
+      pushed.current = pushed.current.slice(at); // one of our own updates arriving
+      return;
+    }
+    pushed.current = [query]; // changed from elsewhere (a link, "Clear filters"): the box follows
+    setQueryInput(query);
+  }, [query]);
   useEffect(() => {
     if (queryInput === query) return;
-    const t = setTimeout(() => update({ q: queryInput || null }), 200);
+    const t = setTimeout(() => {
+      pushed.current = [...pushed.current, queryInput];
+      update({ q: queryInput || null });
+    }, 200);
     return () => clearTimeout(t);
   }, [queryInput]);
 

@@ -9,7 +9,8 @@ import {
   deleteWine,
   safeUrl,
   setVintageImage,
-  setVintageWindow,
+  adoptWindow,
+  peakFitsWindow,
   updatePurchase,
   updateReview,
   type FieldErrors,
@@ -25,7 +26,7 @@ import { useCellar, useRows } from '../../storage/store';
 import { Icon } from '../Icon';
 import { Card, ConsumeDialog, DateField, EmptyNote, Field, PageHead, RatingBadge, Stepper } from '../components';
 import { grapesLabel, reviewSearches } from '../format';
-import { PhotoSlot, discardImage } from '../LabelImage';
+import { PhotoSlot } from '../LabelImage';
 import { Modal, useConfirm, useToast } from '../overlays';
 import { MoveDialog, PlaceDialog, PlacementPicker } from '../Placement';
 import { StatusBadge, WindowTrack, domainFor, yearPosition } from '../status';
@@ -86,9 +87,9 @@ export function WineDetail() {
       danger: true,
     });
     if (!ok) return;
-    const photos = [vintage.images?.front, vintage.images?.back];
+    // The pictures are not deleted here: nothing unsaved is worth risking for a few kilobytes, and
+    // the photo store cleans up after itself once no wine uses a picture (see storage/images.ts).
     apply((d) => ({ ok: true as const, data: deleteWine(d, vintage.id) }));
-    photos.forEach((p) => void discardImage(p));
     toast(`Deleted ${wineTitle(row)}`);
     navigate('/cellar', { replace: true });
   };
@@ -113,7 +114,13 @@ export function WineDetail() {
   const setPhoto = (side: 'front' | 'back', newId: string | undefined) => {
     const old = vintage.images?.[side];
     apply((d) => ({ ok: true as const, data: setVintageImage(d, vintage.id, side, newId) }));
-    if (old && old !== newId) void discardImage(old);
+    // The old picture stays in the photo store until nothing uses it for a long while, so removing or
+    // replacing a photo can be taken back.
+    if (old && old !== newId) {
+      toast(newId ? `${side === 'front' ? 'Front' : 'Back'} label replaced` : `${side === 'front' ? 'Front' : 'Back'} label removed`, {
+        action: { label: 'Undo', onClick: () => apply((d) => ({ ok: true as const, data: setVintageImage(d, vintage.id, side, old) })) },
+      });
+    }
   };
 
   return (
@@ -359,9 +366,25 @@ export function WineDetail() {
         }}
         onUseWindow={async (r) => {
           const next = { drinkFrom: r.drinkFrom, drinkTo: r.drinkTo };
-          if (hasWindow && !(await confirm({ title: 'Replace the drinking window?', message: `Your window ${formatWindow(w)} will become ${formatWindow(next)}.`, confirmLabel: 'Use the critic’s window' }))) return;
-          const res = apply((d) => setVintageWindow(d, vintage.id, next));
-          toast(res.ok ? `Drinking window set to ${formatWindow(next)}` : res.error, res.ok ? undefined : { tone: 'error' });
+          const hasPeak = vintage.peakFrom !== undefined || vintage.peakTo !== undefined;
+          const keepsPeak = peakFitsWindow(vintage, next);
+          if (hasWindow || hasPeak) {
+            const ok = await confirm({
+              title: 'Replace the drinking window?',
+              message: (
+                <>
+                  <p>
+                    Your window {formatWindow(w)} will become {formatWindow(next)}.
+                  </p>
+                  {hasPeak && <p>{keepsPeak ? `Your peak (${peak}) stays, as it still fits inside.` : `Your peak (${peak}) falls outside the new window, so it will be cleared.`}</p>}
+                </>
+              ),
+              confirmLabel: 'Use the critic’s window',
+            });
+            if (!ok) return;
+          }
+          const res = apply((d) => adoptWindow(d, vintage.id, next));
+          toast(res.ok ? `Drinking window set to ${formatWindow(next)}${res.peakCleared ? '. Your peak was cleared.' : ''}` : res.error, res.ok ? undefined : { tone: 'error' });
         }}
       />
 

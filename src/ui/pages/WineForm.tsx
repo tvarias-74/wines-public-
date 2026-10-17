@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useBlocker, useNavigate, useParams } from 'react-router-dom';
 import {
   addWine,
   findBottling,
@@ -24,7 +24,7 @@ import { useCellar, useRows } from '../../storage/store';
 import { Icon } from '../Icon';
 import { Card, DateField, EmptyNote, Field, PageHead } from '../components';
 import { PhotoSlot, discardImage } from '../LabelImage';
-import { useToast } from '../overlays';
+import { useConfirm, useToast } from '../overlays';
 import { PlacementPicker } from '../Placement';
 import { StatusBadge, WindowTrack, domainFor, yearPosition } from '../status';
 
@@ -177,6 +177,35 @@ function WineFormInner() {
   // Photos captured in this form are on the device already; if the form is abandoned, they are thrown away.
   const sessionPhotos = useRef(new Set<string>());
   const saved = useRef(false);
+
+  // Leaving a half-filled form (tab bar, back gesture, Cancel, closing the tab) asks first.
+  const confirm = useConfirm();
+  const initialForm = useRef<string | null>(null);
+  if (initialForm.current === null) initialForm.current = JSON.stringify(form);
+  const dirty = useRef(false);
+  dirty.current = JSON.stringify(form) !== initialForm.current;
+  const blocker = useBlocker(() => dirty.current && !saved.current);
+  useEffect(() => {
+    if (blocker.state !== 'blocked') return;
+    const photos = !!(form.images.front || form.images.back) && [form.images.front, form.images.back].some((p) => p && sessionPhotos.current.has(p));
+    void confirm({
+      title: 'Leave without saving?',
+      message: photos ? 'What you have entered here will be lost, including the photos you just took.' : 'What you have entered here will be lost.',
+      confirmLabel: 'Leave',
+      danger: true,
+    }).then((ok) => (ok ? blocker.proceed() : blocker.reset()));
+  }, [blocker.state]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const warn = (e: BeforeUnloadEvent) => {
+      if (dirty.current && !saved.current) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    // `window` is the drinking window in this component, so the browser's one is reached as globalThis.
+    globalThis.addEventListener('beforeunload', warn);
+    return () => globalThis.removeEventListener('beforeunload', warn);
+  }, []);
   useEffect(
     () => () => {
       if (!saved.current) sessionPhotos.current.forEach((p) => void discardImage(p));
@@ -222,6 +251,26 @@ function WineFormInner() {
   /** `null` = non-vintage, `undefined` = no usable year typed yet. */
   const yearParsed: number | null | undefined = form.nv ? null : /^\d{4}$/.test(form.year.trim()) ? Number(form.year) : undefined;
   const existingVintage = !editing && matchedBottling && yearParsed !== undefined ? findVintage(data, matchedBottling.id, yearParsed, Number(form.sizeMl)) : undefined;
+  // A side of the label this vintage already has a photo for keeps that photo: a new one taken here would
+  // be thrown away on saving, so it is set aside now, with a message, rather than silently later.
+  const heldFront = existingVintage?.images?.front;
+  const heldBack = existingVintage?.images?.back;
+  useEffect(() => {
+    const dropped: string[] = [];
+    for (const side of ['front', 'back'] as const) {
+      const held = side === 'front' ? heldFront : heldBack;
+      const mine = form.images[side];
+      if (!held || !mine || mine === held) continue;
+      if (sessionPhotos.current.has(mine)) {
+        sessionPhotos.current.delete(mine);
+        void discardImage(mine);
+      }
+      dropped.push(side);
+    }
+    if (!dropped.length) return;
+    setForm((f) => ({ ...f, images: { ...f.images, ...(dropped.includes('front') ? { front: undefined } : {}), ...(dropped.includes('back') ? { back: undefined } : {}) } }));
+    toast(`This vintage already has its ${dropped.join(' and ')} label photo, so the new one was not kept. Replace it from the wine’s page.`, { tone: 'error' });
+  }, [heldFront, heldBack, form.images.front, form.images.back]); // eslint-disable-line react-hooks/exhaustive-deps
   const existingStock = existingVintage ? stockOf(data, existingVintage.id) : 0;
   const existingHasWindow = existingVintage ? existingVintage.drinkFrom !== undefined || existingVintage.drinkTo !== undefined : false;
   const movesVintage =
@@ -303,10 +352,7 @@ function WineFormInner() {
       saved.current = true;
       const keep = referencedImageIds(next);
       for (const p of sessionPhotos.current) if (!keep.has(p)) void discardImage(p);
-      for (const side of ['front', 'back'] as const) {
-        const original = row?.vintage.images?.[side];
-        if (original && !keep.has(original)) void discardImage(original);
-      }
+      // A photo this wine had before is not deleted here: the photo store clears pictures nobody uses, after a long while.
     };
 
     if (editing) {
@@ -359,8 +405,8 @@ function WineFormInner() {
 
         <Card title="Label photos" subtitle="Front and back of the bottle. They stay on this device and show in your cellar gallery.">
           <div className="photo-pair">
-            <PhotoSlot label="Front label" imageId={form.images.front} onChange={(i) => setPhoto('front', i)} onError={(m) => toast(m, { tone: 'error' })} disabled={existingPhotosLocked && !!existingVintage?.images?.front} />
-            <PhotoSlot label="Back label" imageId={form.images.back} onChange={(i) => setPhoto('back', i)} onError={(m) => toast(m, { tone: 'error' })} disabled={existingPhotosLocked && !!existingVintage?.images?.back} />
+            <PhotoSlot label="Front label" imageId={existingVintage?.images?.front ?? form.images.front} onChange={(i) => setPhoto('front', i)} onError={(m) => toast(m, { tone: 'error' })} disabled={existingPhotosLocked && !!existingVintage?.images?.front} />
+            <PhotoSlot label="Back label" imageId={existingVintage?.images?.back ?? form.images.back} onChange={(i) => setPhoto('back', i)} onError={(m) => toast(m, { tone: 'error' })} disabled={existingPhotosLocked && !!existingVintage?.images?.back} />
           </div>
           {existingPhotosLocked && <p className="field-hint">This vintage already has photos; add or replace them from its page.</p>}
         </Card>
