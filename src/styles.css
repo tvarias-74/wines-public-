@@ -1063,6 +1063,14 @@ select {
   gap: 10px;
 }
 
+/* Long labels wrap instead of pushing the page sideways on narrow phones. */
+.welcome-actions .btn,
+.settings-actions .btn {
+  max-width: 100%;
+  white-space: normal;
+  text-align: center;
+}
+
 .plain-list {
   list-style: none;
   margin: 0;
