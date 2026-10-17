@@ -73,19 +73,19 @@ describe('addWine', () => {
 describe('updateWine', () => {
   it('edits vintage fields in place', () => {
     const { data, id } = add(emptyData(), {}, { quantity: 6 });
-    const r = updateWine(data, id, wine({ drinkFrom: 2025, drinkTo: 2035, location: 'Rack 1', year: 2018 }), NOW);
+    const r = updateWine(data, id, wine({ drinkFrom: 2025, drinkTo: 2035, notes: 'Front of the shelf', year: 2018 }), NOW);
     expect(r.ok).toBe(true);
     if (!r.ok) throw new Error();
-    expect(r.data.vintages[0]).toMatchObject({ drinkFrom: 2025, drinkTo: 2035, location: 'Rack 1' });
+    expect(r.data.vintages[0]).toMatchObject({ drinkFrom: 2025, drinkTo: 2035, notes: 'Front of the shelf' });
   });
 
-  it('shares bottling-level changes (type, grapes, region) across vintages and can clear them', () => {
+  it('shares bottling-level changes (colour, grapes, region) across vintages and can clear them', () => {
     let { data, id } = add(emptyData(), { year: 2018, region: 'Bordeaux', grapes: [{ grape: 'Merlot' }] }, { quantity: 1 });
     ({ data } = add(data, { year: 2019 }, { quantity: 1 }));
-    const r = updateWine(data, id, wine({ year: 2018, region: undefined, grapes: [{ grape: 'Cabernet Sauvignon', percent: 100 }], type: 'white' }), NOW);
+    const r = updateWine(data, id, wine({ year: 2018, region: undefined, grapes: [{ grape: 'Cabernet Sauvignon', percent: 100 }], colour: 'white' }), NOW);
     if (!r.ok) throw new Error(r.error);
     expect(r.data.bottlings).toHaveLength(1);
-    expect(r.data.bottlings[0]).toMatchObject({ type: 'white' });
+    expect(r.data.bottlings[0]).toMatchObject({ colour: 'white' });
     expect(r.data.bottlings[0]?.region).toBeUndefined();
     expect(r.data.bottlings[0]?.grapes).toEqual([{ grape: 'Cabernet Sauvignon', percent: 100 }]);
   });

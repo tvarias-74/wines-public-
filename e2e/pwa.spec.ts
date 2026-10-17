@@ -42,8 +42,9 @@ test('installs from a sub-path, and works offline — including edits', async ({
 
   // editing works with no network, and survives coming back online
   await page.goto(BASE + '#/wine/new');
-  await page.getByLabel('Producer').fill('Offline Estate');
+  await page.getByLabel('Winery', { exact: true }).fill('Offline Estate');
   await page.getByLabel('Bottling / cuvée').fill('Airplane Red');
+  await page.getByRole('group', { name: 'Colour' }).getByRole('button', { name: 'Red', exact: true }).click();
   await page.getByLabel('Vintage', { exact: true }).fill('2021');
   await page.getByRole('button', { name: 'Add to cellar' }).click();
   await expect(page.locator('.detail-grid')).toBeVisible();

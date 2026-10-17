@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildRows } from './inventory';
 import {
   exportInventoryCsv, formatGrapes, importInventoryCsv, parseBackup, parseDateLoose, parseGrapes, parseNumber,
-  parseSize, parseWineType, serializeBackup,
+  parseColour, parseFizz, parseLocations, parseSize, parseStyle, parseWineType, serializeBackup,
 } from './portability';
 import { parseCsv } from './csv';
 import { buildSampleData } from './sample';
@@ -36,7 +36,7 @@ describe('backup', () => {
     dup.vintages.push({ ...dup.vintages[0] });
     expect(parseBackup(JSON.stringify(dup)).ok).toBe(false);
     const badType = structuredClone(good);
-    badType.bottlings[0].type = 'purple';
+    badType.bottlings[0].colour = 'purple';
     expect(parseBackup(JSON.stringify(badType)).ok).toBe(false);
     const badDate = structuredClone(good);
     badDate.purchases[0].date = '2024-13-45';
@@ -57,8 +57,10 @@ describe('value parsers', () => {
     const cases: [string, number | null][] = [
       ['12', 12], ['12.5', 12.5], ['12,5', 12.5], ['12,50', 12.5], ['€ 12,50', 12.5], ['$1,234.56', 1234.56],
       ['1.234,56', 1234.56], ['1,234', 1234], ['1.234.567', 1234567], ['0,99', 0.99], ['abc', null], ['', null], ['-3', -3],
-      // a lone dot is always a decimal point: misreading a price as 1000× too big is the worse mistake
-      ['1.234', 1.234],
+      // one separator followed by exactly three digits is a thousands separator, whichever it is
+      ['1.234', 1234], ['1.500', 1500], ['1,500', 1500], ['12.500', 12500], ['100.000', 100000],
+      // …but anything else is a decimal part, and a leading zero is never a thousand
+      ['10.25', 10.25], ['1.5', 1.5], ['0.750', 0.75], ['0,125', 0.125],
     ];
     for (const [input, want] of cases) expect(parseNumber(input), input).toBe(want);
   });
@@ -83,14 +85,35 @@ describe('value parsers', () => {
     expect(parseSize('75')).toBe(750);
     expect(parseSize('huge')).toBeNull();
   });
-  it('parses wine types in several languages', () => {
-    expect(parseWineType('Red')).toBe('red');
-    expect(parseWineType('Rosé')).toBe('rose');
-    expect(parseWineType('Champagne')).toBe('sparkling');
-    expect(parseWineType('Blanc')).toBe('white');
-    expect(parseWineType('Port')).toBe('fortified');
-    expect(parseWineType('skin-contact')).toBe('orange');
+  it('reads colour, still/sparkling and style from the words people use', () => {
+    expect(parseColour('Red')).toBe('red');
+    expect(parseColour('Rosé')).toBe('rose');
+    expect(parseColour('Blanc')).toBe('white');
+    expect(parseColour('skin-contact')).toBe('orange');
+    expect(parseColour('Ερυθρό')).toBe('red');
+    expect(parseColour('purple')).toBeNull();
+    expect(parseFizz('Sparkling')).toBe(true);
+    expect(parseFizz('yes')).toBe(true);
+    expect(parseFizz('Still')).toBe(false);
+    expect(parseFizz('quiet')).toBe(false);
+    expect(parseFizz('no')).toBe(false);
+    expect(parseFizz('maybe')).toBeNull();
+    expect(parseStyle('Port')).toBe('fortified');
+    expect(parseStyle('Sauternes')).toBe('sweet');
+    expect(parseStyle('dry')).toBeNull();
+  });
+  it('reads the old combined "Type" word as whatever it actually says', () => {
+    expect(parseWineType('Red')).toEqual({ colour: 'red' });
+    expect(parseWineType('Champagne')).toEqual({ sparkling: true });
+    expect(parseWineType('Port')).toEqual({ style: 'fortified' });
+    expect(parseWineType('Rosé')).toEqual({ colour: 'rose' });
     expect(parseWineType('purple')).toBeNull();
+  });
+  it('reads storage places, with or without counts', () => {
+    expect(parseLocations('12')).toEqual([{ name: 'Division 12' }]);
+    expect(parseLocations('Division 12: 6; 13: 3')).toEqual([{ name: 'Division 12', quantity: 6 }, { name: 'Division 13', quantity: 3 }]);
+    expect(parseLocations('Wooden box A')).toEqual([{ name: 'Wooden box A' }]);
+    expect(parseLocations('')).toEqual([]);
   });
   it('parses grape lists with and without percentages', () => {
     expect(parseGrapes('Merlot 60%; Cabernet Franc 40%')).toEqual([{ grape: 'Merlot', percent: 60 }, { grape: 'Cabernet Franc', percent: 40 }]);
@@ -104,7 +127,7 @@ describe('value parsers', () => {
 
 describe('CSV import', () => {
   const eu = [
-    'Producer;Wine;Vintage;Colour;Bottles;Price;Purchase date;Drink from;Drink to;Grapes;Notes',
+    'Producer;Wine;Vintage;Type;Bottles;Price;Purchase date;Drink from;Drink to;Grapes;Notes',
     'Château Alpha;Grand Vin;2018;Rouge;6;"52,50";05/03/2021;2024;2035;"Merlot 70%; Cabernet Franc 30%";"first ""case"""',
     'Château Alpha;Grand Vin;2018;Rouge;3;60;12/11/2022;;;;',
     'Émile;Brut;NV;Champagne;2;;;;;;',
@@ -131,13 +154,14 @@ describe('CSV import', () => {
     const alpha = rows.find((x) => x.producer.name === 'Château Alpha')!;
     expect(alpha).toMatchObject({ bottles: 9, purchased: 9, status: 'ready' });
     expect(alpha.vintage).toMatchObject({ drinkFrom: 2024, drinkTo: 2035, windowSource: 'manual', notes: 'first "case"' });
-    expect(alpha.bottling).toMatchObject({ type: 'red' });
+    expect(alpha.bottling).toMatchObject({ colour: 'red', sparkling: false });
     expect(alpha.bottling.grapes).toEqual([{ grape: 'Merlot', percent: 70 }, { grape: 'Cabernet Franc', percent: 30 }]);
     expect(alpha.avgPrice).toBeCloseTo((6 * 52.5 + 3 * 60) / 9);
     expect(alpha.firstPurchase).toBe('2021-03-05');
     const nv = rows.find((x) => x.producer.name === 'Émile')!;
     expect(nv.vintage.year).toBeNull();
-    expect(nv.bottling.type).toBe('sparkling');
+    expect(nv.bottling.sparkling).toBe(true);
+    expect(nv.bottling.colour).toBeUndefined(); // "Champagne" says sparkling, not a colour
     expect(nv.avgPrice).toBeNull();
     // a zero-bottle row creates the wine but no stock
     expect(rows.find((x) => x.producer.name === 'Gamma')?.bottles).toBe(0);
@@ -160,14 +184,15 @@ describe('CSV import', () => {
     expect(minimal.imported).toBe(2);
     expect(minimal.bottles).toBe(2);
     expect(minimal.warnings.join(' ')).toMatch(/Bottles/);
-    expect(minimal.warnings.join(' ')).toMatch(/Type/);
-    expect(buildRows(minimal.data, NOW)[0]!.bottling.type).toBe('other');
+    expect(minimal.warnings.join(' ')).toMatch(/Colour/);
+    expect(buildRows(minimal.data, NOW)[0]!.bottling.colour).toBeUndefined();
   });
 
-  it('flags unrecognised wine types rather than silently relabelling them', () => {
-    const r = importInventoryCsv(emptyData(), 'Producer,Wine,Type,Bottles\nA,B,purple,1', NOW);
+  it('flags an unrecognised colour rather than silently relabelling it', () => {
+    const r = importInventoryCsv(emptyData(), 'Producer,Wine,Colour,Bottles\nA,B,purple,1', NOW);
     expect(r.imported).toBe(1);
-    expect(r.warnings.join(' ')).toMatch(/wine type/);
+    expect(r.warnings.join(' ')).toMatch(/colour/);
+    expect(buildRows(r.data, NOW)[0]!.bottling.colour).toBeUndefined();
   });
 
   it('lists recognised and ignored columns', () => {
@@ -201,7 +226,7 @@ describe('CSV export', () => {
 
   it('can use semicolons for European Excel', () => {
     const csv = exportInventoryCsv(buildSampleData(emptyData()), ';', NOW);
-    expect(csv.split('\r\n')[0]).toContain('producer;bottling;vintage');
+    expect(csv.split('\r\n')[0]).toContain('producer;group;bottling;vintage');
     expect(importInventoryCsv(emptyData(), csv, NOW).errors).toEqual([]);
   });
 });

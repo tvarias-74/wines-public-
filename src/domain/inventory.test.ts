@@ -15,8 +15,8 @@ function cellar(): { data: CellarData; ids: Record<string, string> } {
   put('bg18', { producer: 'Château Alpha', bottling: 'Grand Vin', year: 2018, country: 'France', region: 'Bordeaux', grapes: [{ grape: 'Merlot', percent: 70 }, { grape: 'Cabernet Franc', percent: 30 }], drinkFrom: 2024, drinkTo: 2035 }, { quantity: 6, unitPrice: 50, date: '2021-03-01' });
   put('bg16', { producer: 'Château Alpha', bottling: 'Grand Vin', year: 2016, country: 'France', drinkFrom: 2020, drinkTo: 2026 }, { quantity: 3, unitPrice: 40, date: '2019-04-01' });
   put('bs17', { producer: 'Château Alpha', bottling: 'Second Vin', year: 2017, country: 'France' }, { quantity: 12, date: '2020-01-01' });
-  put('zeta', { producer: 'Zeta Wines', bottling: 'Riesling', type: 'white', year: 2022, country: 'Germany', drinkFrom: 2030, drinkTo: 2040 }, { quantity: 4, unitPrice: 20, date: '2024-06-01' });
-  put('nv', { producer: 'Émile Brut', bottling: 'Cuvée', type: 'sparkling', year: null }, { quantity: 2, unitPrice: 35 });
+  put('zeta', { producer: 'Zeta Wines', bottling: 'Riesling', colour: 'white', year: 2022, country: 'Germany', drinkFrom: 2030, drinkTo: 2040 }, { quantity: 4, unitPrice: 20, date: '2024-06-01' });
+  put('nv', { producer: 'Émile Brut', bottling: 'Cuvée', colour: 'white', sparkling: true, year: null }, { quantity: 2, unitPrice: 35 });
   data = drink(data, ids.bg16!, 3); // finished
   data = drink(data, ids.bg18!, 1);
   return { data, ids };
@@ -86,8 +86,10 @@ describe('filterRows', () => {
     expect(filterRows(rows(), { query: 'bordeaux 2018' })).toHaveLength(1);
     expect(filterRows(rows(), { query: 'nonsense' })).toHaveLength(0);
   });
-  it('filters by type, status and country', () => {
-    expect(filterRows(rows(), { type: 'white' })).toHaveLength(1);
+  it('filters by colour, still/sparkling, status and country', () => {
+    expect(filterRows(rows(), { colour: 'white' })).toHaveLength(2);
+    expect(filterRows(rows(), { fizz: 'sparkling' })).toHaveLength(1);
+    expect(filterRows(rows(), { fizz: 'still' })).toHaveLength(3);
     expect(filterRows(rows(), { status: 'unknown' })).toHaveLength(2);
     expect(filterRows(rows(), { country: 'Germany' })).toHaveLength(1);
     expect(filterRows(rows(), { country: '__not_set__' })).toHaveLength(1);
@@ -105,7 +107,8 @@ describe('computeStats', () => {
     expect(s.pricedBottles).toBe(11);
     expect(s.unpricedBottles).toBe(12);
     expect(s.byStatus).toMatchObject({ ready: 5, hold: 4, unknown: 14, soon: 0 });
-    expect(s.byType[0]).toMatchObject({ key: 'red', bottles: 17 });
+    expect(s.byColour[0]).toMatchObject({ key: 'red', bottles: 17 });
+    expect(s.byFizz).toEqual([{ key: 'still', label: 'Still', bottles: 21 }, { key: 'sparkling', label: 'Sparkling', bottles: 2 }]);
     expect(s.byCountry.find((c) => c.label === 'France')?.bottles).toBe(17);
     expect(s.byCountry.find((c) => c.label === 'Not set')?.bottles).toBe(2);
   });

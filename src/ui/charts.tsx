@@ -151,7 +151,7 @@ export function StackedBar({ segments, unit = 'bottle' }: { segments: BarSegment
 
   return (
     <div className="viz" ref={wrapRef}>
-      <div className="sbar" role="img" aria-label={segments.map((s) => `${s.label}: ${plural(s.value)}`).join('; ')}>
+      <div className="sbar" role="group" aria-label="Share of bottles by drinking-window status">
         {segments
           .filter((s) => s.value > 0)
           .map((s) => {

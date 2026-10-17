@@ -55,13 +55,13 @@ export function WindowTrack({ window: w, status, domain, nowPos, compact }: { wi
           className={`track-bar st-${status}${hasFrom && barStart >= domain.start ? '' : ' open-start'}${hasTo && barEnd <= domain.end ? '' : ' open-end'}`}
           style={{ left: pct(barStart), width: `calc(${pct(barEnd)} - ${pct(barStart)})` }}
         >
-          {peakStart !== undefined && peakEnd !== undefined && (
-            <span
-              className="track-peak"
-              style={{ left: `${((peakStart - barStart) / (barEnd - barStart || 1)) * 100}%`, width: `${((peakEnd - peakStart) / (barEnd - barStart || 1)) * 100}%` }}
-            />
-          )}
         </div>
+      )}
+      {hasWindow && peakStart !== undefined && peakEnd !== undefined && peakEnd > domain.start && peakStart < domain.end && (
+        <div
+          className={`track-peak st-${status}`}
+          style={{ left: pct(Math.max(peakStart, barStart)), width: `calc(${pct(Math.min(peakEnd, barEnd))} - ${pct(Math.max(peakStart, barStart))})` }}
+        />
       )}
       <div className="track-now" style={{ left: pct(nowPos) }} title="Today" />
     </div>

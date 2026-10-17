@@ -1,4 +1,5 @@
-import { BOTTLE_SIZES, STANDARD_BOTTLE_ML } from './types';
+import type { Bottling } from './types';
+import { BOTTLE_SIZES, COLOUR_LABEL, STANDARD_BOTTLE_ML, WINE_STYLE_LABEL } from './types';
 
 export function newId(): string {
   const c = globalThis.crypto;
@@ -14,8 +15,31 @@ export function normalizeText(s: string): string {
     .replace(/\p{M}/gu, '')
     .toLowerCase()
     .replace(/ς/g, 'σ')
+    // Phones and word processors "smarten" punctuation; a winery typed either way is the same winery.
+    .replace(/[\u2018\u2019\u201B\u02BC`\u00B4]/g, "'")
+    .replace(/[\u2010-\u2015\u2212]/g, '-')
+    .replace(/&/g, ' and ')
+    .replace(/œ/g, 'oe')
+    .replace(/æ/g, 'ae')
+    .replace(/ß/g, 'ss')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * Turns the bytes of a text file into text. UTF-8 first; an Excel "CSV" saved in a Western
+ * code page (which isn't valid UTF-8) is read as Windows-1252, and UTF-16 is recognised by its
+ * byte-order mark. Says which one it used, so a surprise can be reported rather than hidden.
+ */
+export function decodeText(bytes: ArrayBuffer | Uint8Array): { text: string; encoding: 'utf-8' | 'utf-16le' | 'utf-16be' | 'windows-1252' } {
+  const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  if (u8[0] === 0xff && u8[1] === 0xfe) return { text: new TextDecoder('utf-16le').decode(u8.subarray(2)), encoding: 'utf-16le' };
+  if (u8[0] === 0xfe && u8[1] === 0xff) return { text: new TextDecoder('utf-16be').decode(u8.subarray(2)), encoding: 'utf-16be' };
+  try {
+    return { text: new TextDecoder('utf-8', { fatal: true }).decode(u8), encoding: 'utf-8' };
+  } catch {
+    return { text: new TextDecoder('windows-1252').decode(u8), encoding: 'windows-1252' };
+  }
 }
 
 const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
@@ -101,6 +125,20 @@ export function formatMoney(value: number, currency: string, maxFractionDigits =
   } catch {
     return `${value.toFixed(maxFractionDigits)} ${currency}`;
   }
+}
+
+/** "Red", "White sparkling", "Red fortified", "Sparkling" (colour unknown) — empty when nothing is known. */
+export function bottlingKindLabel(b: Pick<Bottling, 'colour' | 'sparkling' | 'style'>): string {
+  const words: string[] = [];
+  if (b.colour) words.push(COLOUR_LABEL[b.colour]);
+  if (b.sparkling) words.push(words.length ? 'sparkling' : 'Sparkling');
+  if (b.style) words.push(words.length ? WINE_STYLE_LABEL[b.style].toLowerCase() : WINE_STYLE_LABEL[b.style]);
+  return words.join(' ');
+}
+
+/** "Division 12" → "12": the short form used on the cellar map. */
+export function locationShortName(name: string): string {
+  return name.replace(/^division\s+/i, '');
 }
 
 export function pluralize(n: number, one: string, many = `${one}s`): string {

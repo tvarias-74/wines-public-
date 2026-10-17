@@ -1,9 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { hasSampleData, needsBackup, removeSampleData } from '../../domain/actions';
-import { forecastByYear, purchaseEntries, wineTitle, type WineRow } from '../../domain/inventory';
-import { buildSampleData } from '../../domain/sample';
-import { emptyData } from '../../domain/types';
+import { NOT_SET, forecastByYear, purchaseEntries, wineTitle, type WineRow } from '../../domain/inventory';
+import { sampleWines } from '../loadSample';
 import { formatMoney, pluralize } from '../../domain/text';
 import { STATUS_LABEL, STATUS_ORDER, formatWindow, describeStatus, windowOf } from '../../domain/window';
 import { useCellar, useRows } from '../../storage/store';
@@ -62,7 +61,7 @@ export function Dashboard() {
               <Link className="btn" to="/settings#import">
                 <Icon name="upload" size={18} /> Import a spreadsheet or backup
               </Link>
-              <button className="btn" onClick={() => replaceAll(buildSampleData(emptyData()))}>
+              <button className="btn" onClick={async () => replaceAll(await sampleWines())}>
                 Explore with sample wines
               </button>
             </div>
@@ -77,8 +76,14 @@ export function Dashboard() {
   const series: SeriesDef[] = FORECAST_STATUSES.map((s) => ({ id: s, label: STATUS_LABEL[s], color: STATUS_VAR[s] }));
   const nSoon = stats.byStatus.soon;
   const nPast = stats.byStatus.past;
-  const topN = (list: typeof stats.byType, hrefKey: 'type' | 'country') =>
-    list.slice(0, 6).map((c) => ({ key: c.key, label: c.label, value: c.bottles, to: `/cellar?${hrefKey}=${encodeURIComponent(c.key)}` }));
+  const topN = (list: typeof stats.byColour, link: (key: string) => string) =>
+    list.slice(0, 6).map((c) => ({ key: c.key, label: c.label, value: c.bottles, to: link(c.key) }));
+  const hasLayout = data.locations.length > 0;
+  const looseEnds = [
+    hasLayout && stats.unplacedBottles > 0 ? { key: 'place', text: `${pluralize(stats.unplacedBottles, 'bottle')} ${stats.unplacedBottles === 1 ? 'has' : 'have'} no place recorded`, to: '/cellar?view=map', cta: 'Put them away' } : null,
+    stats.noPhotoWines > 0 ? { key: 'photo', text: `${pluralize(stats.noPhotoWines, 'wine')} ${stats.noPhotoWines === 1 ? 'has' : 'have'} no label photo`, to: '/cellar?view=wines&layout=labels&nophoto=1', cta: 'Add photos' } : null,
+    !hasLayout ? { key: 'layout', text: 'Your cellar layout isn’t set up, so bottles have no places yet', to: '/layout', cta: 'Set up layout' } : null,
+  ].filter((x): x is { key: string; text: string; to: string; cta: string } => x !== null);
 
   return (
     <>
@@ -221,14 +226,40 @@ export function Dashboard() {
             {stats.byStatus.unknown > 0 && <p className="card-foot muted">{pluralize(stats.byStatus.unknown, 'bottle')} without a drinking window aren’t shown.</p>}
           </Card>
 
+          {looseEnds.length > 0 && (
+            <Card title="Loose ends" subtitle="Small jobs that make the catalogue complete.">
+              <ul className="plain-list">
+                {looseEnds.map((l) => (
+                  <li key={l.key} className="attn-row">
+                    <Link to={l.to}>
+                      <span className="attn-title">{l.text}</span>
+                    </Link>
+                    <Link className="btn btn-sm" to={l.to}>
+                      {l.cta}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+
           <div className="grid-2">
-            <Card title="By type">
-              <RankBars items={topN(stats.byType, 'type')} />
+            <Card title="By colour">
+              <RankBars items={topN(stats.byColour, (k) => (k === NOT_SET ? '/cellar' : `/cellar?colour=${encodeURIComponent(k)}`))} />
+            </Card>
+            <Card title="Still or sparkling">
+              <RankBars items={topN(stats.byFizz, (k) => `/cellar?fizz=${k}`)} />
             </Card>
             <Card title="By country">
-              <RankBars items={topN(stats.byCountry, 'country')} />
+              <RankBars items={topN(stats.byCountry, (k) => `/cellar?country=${encodeURIComponent(k)}`)} />
               {stats.byCountry.length > 6 && <p className="card-foot muted">Top 6 of {stats.byCountry.length} countries.</p>}
             </Card>
+            {stats.byGroup.some((g) => g.key !== NOT_SET) && (
+              <Card title="By owner family or company">
+                <RankBars items={topN(stats.byGroup, (k) => `/cellar?group=${encodeURIComponent(k)}&by=owner`)} />
+                {stats.byGroup.length > 6 && <p className="card-foot muted">Top 6 of {stats.byGroup.length}.</p>}
+              </Card>
+            )}
           </div>
         </>
       )}

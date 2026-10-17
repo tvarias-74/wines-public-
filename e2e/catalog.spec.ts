@@ -6,8 +6,10 @@ test('add a wine, merge a duplicate, drink and undo — and it all survives a re
 
   // ---- add from scratch, with varieties and an estimated window ----
   await page.getByRole('link', { name: 'Add your first wine' }).click();
-  await page.getByLabel('Producer').fill('Château Margaux');
+  await page.getByLabel('Winery', { exact: true }).fill('Château Margaux');
+  await page.getByLabel('Owner family or company').fill('Mentzelopoulos');
   await page.getByLabel('Bottling / cuvée').fill('Grand Vin');
+  await page.getByRole('group', { name: 'Colour' }).getByRole('button', { name: 'Red', exact: true }).click();
   await page.getByLabel('Vintage', { exact: true }).fill('2015');
   await page.getByLabel('Country').fill('France');
   await page.getByLabel('Region').fill('Bordeaux');
@@ -32,13 +34,16 @@ test('add a wine, merge a duplicate, drink and undo — and it all survives a re
   await expect(page.locator('.window-years')).toHaveText('2025–2045');
   await expect(page.locator('.window-note')).toContainText('estimate');
   await expect(page.locator('.facts')).toContainText('Cabernet Sauvignon 87%, Merlot 13%');
+  await expect(page.locator('.facts')).toContainText('Mentzelopoulos');
+  await expect(page.locator('.facts')).toContainText('Red');
+  await expect(page.locator('.facts')).not.toContainText('Sparkling');
   await expect(page.locator('.ledger').first()).toContainText('6 bottles');
   await expect(page.locator('.ledger').first()).toContainText(/412[.,]50 each/);
   const detailUrl = page.url();
 
   // ---- the same wine typed differently must merge, and reuse the known varieties ----
   await page.goto('/#/wine/new');
-  await page.getByLabel('Producer').fill('chateau MARGAUX');
+  await page.getByLabel('Winery', { exact: true }).fill('chateau MARGAUX');
   await page.getByLabel('Bottling / cuvée').fill('grand vin');
   await page.getByLabel('Vintage', { exact: true }).fill('2015');
   await expect(page.locator('.notice-info')).toContainText('already have');
@@ -77,20 +82,24 @@ test('saving an empty form explains what is missing and focuses the first proble
   await page.goto('/#/wine/new');
   await page.getByRole('button', { name: 'Add to cellar' }).click();
   const errors = page.locator('.field-error');
-  await expect(errors.filter({ hasText: /producer/i })).toBeVisible();
+  await expect(errors.filter({ hasText: /winery|producer/i })).toBeVisible();
   await expect(errors.filter({ hasText: /bottling/i })).toBeVisible();
+  await expect(errors.filter({ hasText: /colour/i })).toBeVisible();
   await expect(errors.filter({ hasText: /year/i })).toBeVisible();
-  await expect(page.getByLabel('Producer')).toBeFocused();
+  await expect(page.getByLabel('Winery', { exact: true })).toBeFocused();
 });
 
 test('non-vintage wines and zero-bottle entries are accepted', async ({ page }) => {
   await page.goto('/#/wine/new');
-  await page.getByLabel('Producer').fill('Maison Test');
+  await page.getByLabel('Winery', { exact: true }).fill('Maison Test');
   await page.getByLabel('Bottling / cuvée').fill('Brut');
+  await page.getByRole('group', { name: 'Colour' }).getByRole('button', { name: 'White', exact: true }).click();
+  await page.getByRole('group', { name: 'Still or sparkling' }).getByRole('button', { name: 'Sparkling' }).click();
   await page.getByLabel(/Non-vintage/).check();
   await page.getByLabel('Bottles', { exact: true }).fill('0');
   await page.getByRole('button', { name: 'Add to cellar' }).click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Brut NV');
+  await expect(page.locator('.facts')).toContainText('White sparkling');
   await expect(page.locator('.stock .hero-value')).toHaveText('0');
   await expect(page.getByRole('button', { name: 'Drink a bottle' })).toBeDisabled();
 });
@@ -129,8 +138,9 @@ test('estimates are marked "est." until a year is edited by hand', async ({ page
 test('adding a second vintage reuses the bottling, so varieties are entered once', async ({ page }) => {
   await addWineViaForm(page, { producer: 'Domaine Un', bottling: 'Cuvée Deux', year: '2019', bottles: '2' });
   await page.goto('/#/wine/new');
-  await page.getByLabel('Producer').fill('Domaine Un');
+  await page.getByLabel('Winery', { exact: true }).fill('Domaine Un');
   await page.getByLabel('Bottling / cuvée').fill('Cuvée Deux');
+  await expect(page.locator('main')).toContainText('You already have this bottling');
   await page.getByLabel('Vintage', { exact: true }).fill('2020');
   await page.getByLabel('Bottles', { exact: true }).fill('4');
   await page.getByRole('button', { name: 'Add to cellar' }).click();

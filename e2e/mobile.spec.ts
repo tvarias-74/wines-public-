@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { addWineViaForm, expect, loadSample, test } from './fixtures';
 
-const ROUTES = ['/#/', '/#/cellar', '/#/cellar?view=wines', '/#/cellar?view=timeline', '/#/purchases', '/#/settings', '/#/wine/new'];
+const ROUTES = ['/#/', '/#/cellar', '/#/cellar?view=wines', '/#/cellar?view=wines&layout=labels', '/#/cellar?view=timeline', '/#/cellar?view=map', '/#/layout', '/#/purchases', '/#/settings', '/#/wine/new'];
 
 // Mobile emulation lets the browser zoom out to fit wide content, which hides overflow from
 // scrollWidth. A fixed-width desktop-style viewport measures it honestly.

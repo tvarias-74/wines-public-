@@ -1,14 +1,16 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { hasSampleData, markBackedUp, removeSampleData, updateSettings } from '../../domain/actions';
-import { exportInventoryCsv, importInventoryCsv, parseBackup, serializeBackup, type CsvImportReport } from '../../domain/portability';
-import { buildSampleData } from '../../domain/sample';
-import { CURRENCIES, emptyData } from '../../domain/types';
-import { formatDate, pluralize, toIsoDate } from '../../domain/text';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
+import { addCustomImpression, hasSampleData, markBackedUp, removeCustomImpression, removeSampleData, updateSettings } from '../../domain/actions';
+import { exportInventoryCsv, importInventoryCsv, type CsvImportReport } from '../../domain/portability';
+import { CURRENCIES, emptyData, type CellarData } from '../../domain/types';
+import { decodeText, formatDate, pluralize, toIsoDate } from '../../domain/text';
+import { createBackupFile, photoStats, readBackupFile, storeBackupImages } from '../../storage/backupFiles';
 import { applyTheme, isPersisted, readTheme, type ThemePreference } from '../../storage/storage';
 import { useCellar } from '../../storage/store';
 import { Icon } from '../Icon';
 import { Card, Field, PageHead } from '../components';
-import { downloadFile } from '../format';
+import { downloadFile, formatBytes } from '../format';
+import { sampleWines } from '../loadSample';
 import { Modal, useConfirm, useToast } from '../overlays';
 
 function Section({ id, title, subtitle, children }: { id?: string; title: string; subtitle?: ReactNode; children: ReactNode }) {
@@ -20,61 +22,117 @@ function Section({ id, title, subtitle, children }: { id?: string; title: string
   );
 }
 
+/** A stored timestamp as the user's own calendar day (not the UTC day). */
+const localDay = (iso: string): string => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso.slice(0, 10) : toIsoDate(d);
+};
+
+interface CsvFile {
+  fileName: string;
+  text: string;
+  encoding: ReturnType<typeof decodeText>['encoding'];
+}
+
 export function Settings() {
-  const { data, apply, replaceAll, saveError } = useCellar();
+  const { data, apply, replaceAll, readOnly } = useCellar();
   const confirm = useConfirm();
   const toast = useToast();
   const [theme, setTheme] = useState<ThemePreference>(readTheme);
   const [persisted, setPersisted] = useState<boolean | null>(null);
   const [semicolon, setSemicolon] = useState(false);
-  const [csvReport, setCsvReport] = useState<{ fileName: string; report: CsvImportReport } | null>(null);
-  const jsonInput = useRef<HTMLInputElement>(null);
+  const [csv, setCsv] = useState<CsvFile | null>(null);
+  const [photos, setPhotos] = useState<{ count: number; bytes: number } | null>(null);
+  const [withPhotos, setWithPhotos] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [newWord, setNewWord] = useState('');
+  const backupInput = useRef<HTMLInputElement>(null);
   const csvInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     void isPersisted().then(setPersisted);
+    void photoStats().then(setPhotos, () => setPhotos(null));
   }, []);
 
   const wineCount = data.vintages.length;
   const sample = hasSampleData(data);
+  const layoutCount = data.locations.length;
+  const photoNote = photos && photos.count > 0 ? ` including ${pluralize(photos.count, 'label photo')} (${formatBytes(photos.bytes)})` : '';
 
-  const exportBackup = () => {
-    const now = new Date();
-    downloadFile(`cellar-book-backup-${toIsoDate(now)}.json`, serializeBackup(data, now), 'application/json');
-    apply((d) => ({ ok: true as const, data: markBackedUp(d, now.toISOString()) }));
-    toast('Backup downloaded. Keep it somewhere safe, like your cloud drive.');
+  const exportBackup = async () => {
+    setBusy('backup');
+    try {
+      const now = new Date();
+      const file = await createBackupFile(data, withPhotos, now);
+      downloadFile(file.filename, file.blob);
+      apply((d) => ({ ok: true as const, data: markBackedUp(d, now.toISOString()) }));
+      toast(file.photos ? `Backup downloaded with ${pluralize(file.photos, 'photo')}. Keep it somewhere safe, like your cloud drive.` : 'Backup downloaded. Keep it somewhere safe, like your cloud drive.');
+    } catch (e) {
+      toast(e instanceof Error ? `The backup could not be made: ${e.message}` : 'The backup could not be made', { tone: 'error' });
+    } finally {
+      setBusy(null);
+    }
   };
 
   const restoreBackup = async (file: File) => {
-    const parsed = parseBackup(await file.text());
-    if (!parsed.ok) {
-      toast(parsed.error, { tone: 'error' });
-      return;
+    setBusy('restore');
+    try {
+      const parsed = await readBackupFile(file);
+      if (!parsed.ok) {
+        toast(parsed.error, { tone: 'error' });
+        return;
+      }
+      const incoming = parsed.data;
+      const ok = await confirm({
+        title: 'Replace your cellar with this backup?',
+        message: (
+          <>
+            <p>
+              <strong>{file.name}</strong> contains {pluralize(incoming.vintages.length, 'wine')}, {pluralize(incoming.purchases.length, 'purchase')}, {pluralize(incoming.consumptions.length, 'tasting/removal')}, {pluralize(incoming.locations.length, 'storage place')}
+              {parsed.images.length ? ` and ${pluralize(parsed.images.length, 'label photo')}` : ''}.
+            </p>
+            {parsed.warnings.map((w) => (
+              <p key={w}>{w}</p>
+            ))}
+            <p>
+              Your current cellar ({pluralize(wineCount, 'wine')}) will be <strong>replaced</strong>. Back it up first if you might want it again.
+            </p>
+          </>
+        ),
+        confirmLabel: 'Replace my cellar',
+        danger: wineCount > 0,
+      });
+      if (!ok) return;
+      // Photos go in first: if that fails, nothing about the cellar has changed.
+      await storeBackupImages(parsed.images);
+      replaceAll(incoming);
+      void photoStats().then(setPhotos, () => undefined);
+      toast('Backup restored');
+    } catch (e) {
+      toast(e instanceof Error ? `The backup could not be restored: ${e.message}` : 'The backup could not be restored', { tone: 'error' });
+    } finally {
+      setBusy(null);
     }
-    const incoming = parsed.data;
-    const ok = await confirm({
-      title: 'Replace your cellar with this backup?',
-      message: (
-        <>
-          <p>
-            <strong>{file.name}</strong> contains {pluralize(incoming.vintages.length, 'wine')}, {pluralize(incoming.purchases.length, 'purchase')} and {pluralize(incoming.consumptions.length, 'tasting/removal')}.
-          </p>
-          <p>
-            Your current cellar ({pluralize(wineCount, 'wine')}) will be <strong>replaced</strong>. Back it up first if you might want it again.
-          </p>
-        </>
-      ),
-      confirmLabel: 'Replace my cellar',
-      danger: wineCount > 0,
-    });
-    if (!ok) return;
-    replaceAll(incoming);
-    toast('Backup restored');
   };
 
   const readCsv = async (file: File) => {
-    const text = await file.text();
-    setCsvReport({ fileName: file.name, report: importInventoryCsv(data, text, new Date()) });
+    const { text, encoding } = decodeText(await file.arrayBuffer());
+    setCsv({ fileName: file.name, text, encoding });
+  };
+
+  /** The import is applied to the cellar as it is when the button is pressed, not as it was when the file was read. */
+  const confirmCsv = () => {
+    if (!csv) return;
+    const r = apply<{ data: CellarData; report: CsvImportReport }>((d) => {
+      const report = importInventoryCsv(d, csv.text, new Date());
+      return report.imported === 0 ? { ok: false as const, error: 'Nothing could be imported from this file.' } : { ok: true as const, data: report.data, report };
+    });
+    if (!r.ok) {
+      toast(r.error, { tone: 'error' });
+      return;
+    }
+    toast(`Imported ${pluralize(r.report.imported, 'row')} (${pluralize(r.report.bottles, 'bottle')})`);
+    setCsv(null);
   };
 
   const eraseAll = async () => {
@@ -83,9 +141,9 @@ export function Settings() {
       message: (
         <>
           <p>
-            All {pluralize(wineCount, 'wine')}, purchases and history on this device will be permanently deleted. There is no undo.
+            All {pluralize(wineCount, 'wine')}, purchases, tastings, storage layout and label photos on this device will be permanently deleted. There is no undo.
           </p>
-          <p>{data.meta.lastBackupAt ? `Your last backup was on ${formatDate(data.meta.lastBackupAt.slice(0, 10))}.` : 'You have not made a backup yet.'}</p>
+          <p>{data.meta.lastBackupAt ? `Your last backup was on ${formatDate(localDay(data.meta.lastBackupAt))}.` : 'You have not made a backup yet.'}</p>
         </>
       ),
       confirmLabel: 'Delete everything',
@@ -97,18 +155,15 @@ export function Settings() {
     }
   };
 
+  const addWord = () => {
+    if (!newWord.trim()) return;
+    apply((d) => ({ ok: true as const, data: addCustomImpression(d, newWord) }));
+    setNewWord('');
+  };
+
   return (
     <>
       <PageHead title="Settings" subtitle="Your preferences, and your data." />
-
-      {saveError && (
-        <div className="banner banner-warn" role="alert">
-          <Icon name="alert" />
-          <p>
-            <strong>Changes can’t be saved in this browser.</strong> {saveError}. This often happens in a private window. Download a backup so nothing is lost.
-          </p>
-        </div>
-      )}
 
       <Section title="Preferences">
         <div className="form-grid">
@@ -152,18 +207,68 @@ export function Settings() {
         </div>
       </Section>
 
-      <Section id="backup" title="Back up and restore" subtitle="Your cellar is stored only on this device, in this browser. A backup file is the safe copy — and how you move your cellar to another device.">
+      <Section title="Cellar layout" subtitle={layoutCount ? `${pluralize(layoutCount, 'place')} set up. New divisions hold ${data.settings.divisionCapacity} bottles unless you say otherwise.` : 'Set up your numbered divisions and any boxes on the floor, so every bottle has a place.'}>
         <div className="settings-actions">
-          <button className="btn btn-primary" onClick={exportBackup} disabled={wineCount === 0}>
-            <Icon name="download" size={18} /> Download backup
+          <Link className="btn" to="/layout">
+            <Icon name="grid" size={18} /> {layoutCount ? 'Edit cellar layout' : 'Set up cellar layout'}
+          </Link>
+        </div>
+      </Section>
+
+      <Section title="Tasting words" subtitle="The ready-made impressions (fruit, spice, structure…) are always there. Add words of your own and they will be offered alongside them when you record a tasting.">
+        <form
+          className="add-word"
+          onSubmit={(e) => {
+            e.preventDefault();
+            addWord();
+          }}
+        >
+          <label className="sr-only" htmlFor="new-word">
+            A tasting word of your own
+          </label>
+          <input id="new-word" value={newWord} maxLength={60} onChange={(e) => setNewWord(e.target.value)} placeholder="e.g. wet slate, rosewater" autoCapitalize="none" />
+          <button className="btn" type="submit" disabled={!newWord.trim()}>
+            <Icon name="plus" size={16} /> Add word
           </button>
-          <button className="btn" onClick={() => jsonInput.current?.click()}>
-            <Icon name="upload" size={18} /> Restore from backup…
+        </form>
+        {data.settings.customImpressions.length > 0 ? (
+          <ul className="tags-list" aria-label="Your tasting words">
+            {data.settings.customImpressions.map((w) => (
+              <li key={w}>
+                <span className="word">{w}</span>
+                <button className="btn btn-quiet btn-sm" aria-label={`Remove ${w}`} onClick={() => apply((d) => ({ ok: true as const, data: removeCustomImpression(d, w) }))}>
+                  <Icon name="x" size={14} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="card-foot muted">No words of your own yet.</p>
+        )}
+      </Section>
+
+      <Section
+        id="backup"
+        title="Back up and restore"
+        subtitle="Your cellar is stored only on this device, in this browser. A backup file is the safe copy — and how you move your cellar to another device."
+      >
+        {photos && photos.count > 0 && (
+          <label className="check">
+            <input type="checkbox" checked={withPhotos} onChange={(e) => setWithPhotos(e.target.checked)} />
+            Include label photos ({pluralize(photos.count, 'photo')}, about {formatBytes(photos.bytes)})
+          </label>
+        )}
+        <div className="settings-actions">
+          <button className="btn btn-primary" onClick={() => void exportBackup()} disabled={wineCount === 0 || busy !== null}>
+            <Icon name="download" size={18} /> {busy === 'backup' ? 'Preparing…' : 'Download backup'}
+          </button>
+          <button className="btn" onClick={() => backupInput.current?.click()} disabled={busy !== null}>
+            <Icon name="upload" size={18} /> {busy === 'restore' ? 'Reading…' : 'Restore from backup…'}
           </button>
           <input
-            ref={jsonInput}
+            ref={backupInput}
             type="file"
-            accept="application/json,.json"
+            accept="application/json,application/zip,.json,.zip"
             hidden
             onChange={(e) => {
               const f = e.target.files?.[0];
@@ -173,7 +278,10 @@ export function Settings() {
           />
         </div>
         <p className="card-foot muted">
-          {data.meta.lastBackupAt ? `Last backup: ${formatDate(data.meta.lastBackupAt.slice(0, 10))}.` : 'No backup yet.'}{' '}
+          {withPhotos && photos && photos.count > 0
+            ? `The backup is a .zip file with your wines${photoNote}.`
+            : 'The backup is a .json file with your wines. Label photos are only saved when you include them, and then it becomes a .zip.'}{' '}
+          {data.meta.lastBackupAt ? `Last backup: ${formatDate(localDay(data.meta.lastBackupAt))}.` : 'No backup yet.'}{' '}
           {persisted === true && 'This browser has promised to keep your data.'}
           {persisted === false && 'The browser may clear this data if the device runs low on space — another reason to keep a backup.'}
         </p>
@@ -212,23 +320,32 @@ export function Settings() {
           <p>
             The first row names the columns. Only <strong>Producer</strong> and <strong>Bottling</strong> (or “Wine”, “Cuvée”) are required; the rest are used when present:
           </p>
-          <p className="mono">Producer, Bottling, Vintage, Type, Size, Country, Region, Appellation, Varieties, Bottles, Price, Purchase date, Merchant, Drink from, Drink to, Peak from, Peak to, Location, Notes</p>
+          <p className="mono">
+            Producer, Group, Bottling, Vintage, Colour, Sparkling, Style, Type, Size, Country, Region, Appellation, Varieties, Bottles, Price, Purchase date, Merchant, Drink from, Drink to, Peak from, Peak to, Locations, Notes
+          </p>
           <ul>
             <li>Each row adds that many bottles to the wine. Rows for the same producer, bottling and vintage are combined.</li>
+            <li>
+              <strong>Colour</strong> is red, white, rosé or orange; <strong>Sparkling</strong> is yes or no. A single “Type” column (“Red”, “Champagne”, “Sparkling rosé”…) also works, but a wine whose colour can’t be read is added without one rather than guessed.
+            </li>
+            <li>
+              <strong>Group</strong> is the family or company behind the producer (Antinori, Karamolegos…). <strong>Locations</strong> can be “Division 12; Wooden box 3 (4)” — the number in brackets is how many bottles.
+            </li>
             <li>Write non-vintage wines as “NV”. Varieties can be “Merlot 60%; Cabernet Franc 40%”.</li>
             <li>Dates can be YYYY-MM-DD or DD/MM/YYYY (day first), or just a year. Commas or semicolons both work.</li>
-            <li>The CSV export is for spreadsheets. For a full backup of purchases and history, use the backup file.</li>
+            <li>A dot or comma followed by exactly three digits is read as a thousands separator (1.500 is fifteen hundred), except after a leading zero (0.750 is three quarters).</li>
+            <li>The CSV holds the wines, not their photos, tastings or reviews. For a full backup, use the backup file.</li>
           </ul>
         </details>
       </Section>
 
-      <Section title="Sample wines" subtitle="A made-up cellar for trying things out. Your own wines are never touched.">
+      <Section title="Sample wines" subtitle="A made-up cellar for trying things out, with label pictures, storage places and tastings. Your own wines are never touched.">
         <div className="settings-actions">
           {sample ? (
             <button
               className="btn"
               onClick={async () => {
-                if (await confirm({ title: 'Remove sample wines?', message: 'The demo wines and their purchases are deleted. Anything you added yourself is kept.', confirmLabel: 'Remove samples', danger: true })) {
+                if (await confirm({ title: 'Remove sample wines?', message: 'The demo wines, their purchases, tastings and pictures are deleted. Anything you added yourself is kept.', confirmLabel: 'Remove samples', danger: true })) {
                   apply((d) => ({ ok: true as const, data: removeSampleData(d) }));
                   toast('Sample wines removed');
                 }
@@ -239,21 +356,27 @@ export function Settings() {
           ) : (
             <button
               className="btn"
-              onClick={() => {
-                replaceAll(buildSampleData(data));
-                toast('Sample wines added');
+              disabled={busy !== null}
+              onClick={async () => {
+                setBusy('sample');
+                try {
+                  replaceAll(await sampleWines(data));
+                  toast('Sample wines added');
+                } finally {
+                  setBusy(null);
+                }
               }}
             >
-              Add sample wines
+              {busy === 'sample' ? 'Adding…' : 'Add sample wines'}
             </button>
           )}
         </div>
       </Section>
 
       <Section title="Delete everything">
-        <p className="card-sub">Permanently removes all wines, purchases and history from this device.</p>
+        <p className="card-sub">Permanently removes all wines, purchases, history and label photos from this device.</p>
         <div className="settings-actions">
-          <button className="btn btn-danger" onClick={eraseAll} disabled={wineCount === 0}>
+          <button className="btn btn-danger" onClick={eraseAll} disabled={(wineCount === 0 && layoutCount === 0) || readOnly}>
             <Icon name="trash" size={18} /> Delete all my data
           </button>
         </div>
@@ -261,47 +384,52 @@ export function Settings() {
 
       <Section title="About">
         <p className="card-sub">
-          Cellar Book keeps your wines on this device and works offline. Drinking windows are whole calendar years, both ends included. Estimates offered while adding a wine are rules of thumb by aging potential, not tasting advice, and are marked “est.” until you change them.
+          Cellar Book keeps your wines on this device and works offline. Drinking windows are whole calendar years, both ends included. Estimates offered while adding a wine are rules of thumb by aging potential, not tasting advice, and are marked “est.” until you change them. Reviews from Vivino, Robert Parker or Jancis Robinson are ones you enter yourself: Cellar Book gives you a search link for each, but doesn’t fetch scores for you.
         </p>
       </Section>
 
-      {csvReport && (
-        <Modal
-          wide
-          title="Import from CSV"
-          onClose={() => setCsvReport(null)}
-          footer={
-            <>
-              <button className="btn" onClick={() => setCsvReport(null)}>
-                Cancel
-              </button>
-              <button
-                className="btn btn-primary"
-                disabled={csvReport.report.imported === 0}
-                onClick={() => {
-                  replaceAll(csvReport.report.data);
-                  toast(`Imported ${pluralize(csvReport.report.imported, 'row')} (${pluralize(csvReport.report.bottles, 'bottle')})`);
-                  setCsvReport(null);
-                }}
-              >
-                Import {pluralize(csvReport.report.imported, 'row')}
-              </button>
-            </>
-          }
-        >
-          <CsvPreview fileName={csvReport.fileName} report={csvReport.report} />
-        </Modal>
-      )}
+      {csv && <CsvDialog csv={csv} onCancel={() => setCsv(null)} onConfirm={confirmCsv} />}
     </>
   );
 }
 
-function CsvPreview({ fileName, report }: { fileName: string; report: CsvImportReport }) {
+function CsvDialog({ csv, onCancel, onConfirm }: { csv: CsvFile; onCancel: () => void; onConfirm: () => void }) {
+  const { data } = useCellar();
+  const report = useMemo(() => importInventoryCsv(data, csv.text, new Date()), [data, csv.text]);
+  return (
+    <Modal
+      wide
+      title="Import from CSV"
+      onClose={onCancel}
+      footer={
+        <>
+          <button className="btn" onClick={onCancel}>
+            Cancel
+          </button>
+          <button className="btn btn-primary" disabled={report.imported === 0} onClick={onConfirm}>
+            Import {pluralize(report.imported, 'row')}
+          </button>
+        </>
+      }
+    >
+      <CsvPreview csv={csv} report={report} />
+    </Modal>
+  );
+}
+
+function CsvPreview({ csv, report }: { csv: CsvFile; report: CsvImportReport }) {
   return (
     <div className="csv-preview">
       <p>
-        <strong>{fileName}</strong>
+        <strong>{csv.fileName}</strong>
       </p>
+      {csv.encoding === 'windows-1252' && (
+        <div className="notice notice-warn">
+          <p>
+            This file isn’t saved as UTF-8, so it was read as Windows-1252 (the usual Excel format). Check that accented and Greek-transliterated names look right below; if not, save it from your spreadsheet as “CSV UTF-8”.
+          </p>
+        </div>
+      )}
       <p>
         {report.imported > 0 ? (
           <>
@@ -315,9 +443,7 @@ function CsvPreview({ fileName, report }: { fileName: string; report: CsvImportR
       {report.errors.length > 0 && (
         <div className="notice notice-warn">
           <p>
-            <strong>
-              {pluralize(report.errors.length, 'row')} will be skipped:
-            </strong>
+            <strong>{pluralize(report.errors.length, 'row')} will be skipped:</strong>
           </p>
           <ul>
             {report.errors.slice(0, 8).map((e) => (
@@ -333,9 +459,10 @@ function CsvPreview({ fileName, report }: { fileName: string; report: CsvImportR
       {report.warnings.length > 0 && (
         <div className="notice">
           <ul>
-            {report.warnings.map((w) => (
+            {report.warnings.slice(0, 8).map((w) => (
               <li key={w}>{w}</li>
             ))}
+            {report.warnings.length > 8 && <li>…and {report.warnings.length - 8} more.</li>}
           </ul>
         </div>
       )}

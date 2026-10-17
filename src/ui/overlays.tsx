@@ -9,12 +9,17 @@ export function Modal({ title, onClose, children, footer, wide }: { title: strin
   useEffect(() => {
     const dlg = ref.current;
     if (!dlg) return;
+    // Remember what had focus so it can be given back: React removes the dialog before the
+    // browser would, and focus would otherwise fall to the top of the page.
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     if (!dlg.open) dlg.showModal();
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = prev;
       if (dlg.open) dlg.close();
+      if (opener && opener.isConnected) opener.focus({ preventScroll: true });
+      else document.getElementById('main')?.focus({ preventScroll: true });
     };
   }, []);
 
