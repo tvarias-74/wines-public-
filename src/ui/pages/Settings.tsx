@@ -318,18 +318,18 @@ export function Settings() {
         <details className="help">
           <summary>What should my CSV look like?</summary>
           <p>
-            The first row names the columns. Only <strong>Producer</strong> and <strong>Bottling</strong> (or “Wine”, “Cuvée”) are required; the rest are used when present:
+            The first row names the columns. Only <strong>Producer</strong> (or “Winery”) and <strong>Bottling</strong> (or “Wine”, “Cuvée”) are required; the rest are used when present:
           </p>
           <p className="mono">
             Producer, Group, Bottling, Vintage, Colour, Sparkling, Style, Type, Size, Country, Region, Appellation, Varieties, Bottles, Price, Purchase date, Merchant, Drink from, Drink to, Peak from, Peak to, Locations, Notes
           </p>
           <ul>
-            <li>Each row adds that many bottles to the wine. Rows for the same producer, bottling and vintage are combined.</li>
+            <li>Each row adds that many bottles to the wine. Rows for the same winery, bottling and vintage are combined.</li>
             <li>
               <strong>Colour</strong> is red, white, rosé or orange; <strong>Sparkling</strong> is yes or no. A single “Type” column (“Red”, “Champagne”, “Sparkling rosé”…) also works, but a wine whose colour can’t be read is added without one rather than guessed.
             </li>
             <li>
-              <strong>Group</strong> is the family or company behind the producer (Antinori, Karamolegos…). <strong>Locations</strong> can be “Division 12; Wooden box 3 (4)” — the number in brackets is how many bottles.
+              <strong>Group</strong> is the family or company behind the winery (Antinori, Karamolegos…). <strong>Locations</strong> can be “Division 12: 6; Wooden box 3: 4” — the number after the colon is how many bottles.
             </li>
             <li>Write non-vintage wines as “NV”. Varieties can be “Merlot 60%; Cabernet Franc 40%”.</li>
             <li>Dates can be YYYY-MM-DD or DD/MM/YYYY (day first), or just a year. Commas or semicolons both work.</li>

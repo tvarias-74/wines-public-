@@ -1,8 +1,12 @@
-import { expect, test } from './fixtures';
+import { readFileSync, writeFileSync } from 'node:fs';
+import type { Page } from '@playwright/test';
+import { expect, settle, test } from './fixtures';
 
 const BASE = 'http://localhost:4180/wines-public-/';
 
 test.use({ serviceWorkers: 'allow', baseURL: BASE });
+// The update tests change the served service worker file, so nothing in this file may run beside them.
+test.describe.configure({ mode: 'serial' });
 
 test('installs from a sub-path, and works offline — including edits', async ({ page, context }) => {
   const failed: string[] = [];
@@ -55,4 +59,72 @@ test('installs from a sub-path, and works offline — including edits', async ({
   await expect(page.locator('.wine-row')).toHaveCount(1);
 
   expect(failed).toEqual([]);
+});
+
+// ---- updates: a new version waits for the user ---------------------------------------------------------
+
+const SW_FILE = 'dist/sw.js';
+const MARK = '\n// new version ';
+
+/** The build's own service worker, with anything an earlier (or crashed) run appended taken off again. */
+const pristineSw = () => readFileSync(SW_FILE, 'utf8').split(MARK)[0] as string;
+
+/** Serves "a new version": the service worker file changes by a byte-different comment, nothing else. */
+async function publishNewVersion<T>(page: Page, body: () => Promise<T>): Promise<T> {
+  const original = pristineSw();
+  try {
+    writeFileSync(SW_FILE, `${original}${MARK}${Date.now()}\n`);
+    await page.evaluate(async () => {
+      const registration = await navigator.serviceWorker.getRegistration();
+      await registration?.update();
+    });
+    return await body();
+  } finally {
+    writeFileSync(SW_FILE, original);
+  }
+}
+
+async function installedWithSample(page: Page) {
+  await page.goto(BASE);
+  await page.getByRole('button', { name: 'Explore with sample wines' }).click();
+  await expect(page.locator('.hero-value')).toBeVisible();
+  await settle(page);
+  await page.reload();
+  await page.waitForFunction(() => !!navigator.serviceWorker.controller);
+  await expect(page.locator('.hero-value')).toHaveText('199');
+}
+
+test('a new version is offered, never forced, and "Later" leaves the page as it is', async ({ page }) => {
+  await installedWithSample(page);
+  await page.goto(BASE + '#/wine/new');
+  await page.getByLabel('Winery', { exact: true }).fill('Half Filled Estate');
+  await page.evaluate(() => ((window as unknown as { __stillHere?: boolean }).__stillHere = true));
+
+  await publishNewVersion(page, async () => {
+    const banner = page.locator('.banner', { hasText: 'A new version of Cellar Book is ready' });
+    await expect(banner).toBeVisible({ timeout: 20_000 });
+    // it did not reload under the half-filled form
+    expect(await page.evaluate(() => (window as unknown as { __stillHere?: boolean }).__stillHere)).toBe(true);
+    await expect(page.getByLabel('Winery', { exact: true })).toHaveValue('Half Filled Estate');
+    await banner.getByRole('button', { name: 'Later' }).click();
+    await expect(banner).toHaveCount(0);
+  });
+});
+
+test('"Update now" installs the new version and the cellar is exactly as it was', async ({ page }) => {
+  await installedWithSample(page);
+  await page.goto(BASE + '#/');
+  await page.evaluate(() => ((window as unknown as { __stillHere?: boolean }).__stillHere = true));
+
+  await publishNewVersion(page, async () => {
+    const banner = page.locator('.banner', { hasText: 'A new version of Cellar Book is ready' });
+    await expect(banner).toBeVisible({ timeout: 20_000 });
+    await banner.getByRole('button', { name: 'Update now' }).click();
+    // the page reloaded (our marker is gone) and the cellar came back with it
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { __stillHere?: boolean }).__stillHere).catch(() => 'navigating'), { timeout: 20_000 })
+      .toBeUndefined();
+    await expect(page.locator('.hero-value')).toHaveText('199');
+    await expect(page.locator('.banner', { hasText: 'A new version of Cellar Book is ready' })).toHaveCount(0);
+  });
 });

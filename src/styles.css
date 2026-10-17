@@ -2434,6 +2434,7 @@ dialog.modal::backdrop {
 
 .label-tile:hover {
   border-color: var(--line-strong);
+  color: inherit;
 }
 
 .label-tile .label-img {
@@ -2583,6 +2584,11 @@ dialog.modal::backdrop {
 .cell.is-empty {
   border-style: dashed;
   border-color: var(--line);
+}
+
+.cell.is-empty .cell-count {
+  font-weight: 500;
+  color: var(--ink-3);
 }
 
 .cell.is-full {

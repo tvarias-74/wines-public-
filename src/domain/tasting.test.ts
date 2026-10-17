@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addConsumption, addCustomImpression, deleteConsumption, updateConsumption, validateTasting } from './actions';
+import { addConsumption, addCustomImpression, deleteConsumption, removeCustomImpression, updateConsumption, validateTasting } from './actions';
 import { IMPRESSION_CATEGORIES, impressionLabel, isKnownImpression } from './impressions';
 import { buildRows, tastingEntries } from './inventory';
 import { add, drink, emptyData, NOW, place, withDivisions } from './helpers.test-util';
@@ -53,6 +53,15 @@ describe('impressions', () => {
     data = addCustomImpression(data, 'smoked PAPRIKA');
     data = addCustomImpression(data, '   ');
     expect(data.settings.customImpressions).toEqual(['Smoked paprika']);
+  });
+  it('a word taken off the list stays on the tastings that already used it', () => {
+    const { data, id } = add(addCustomImpression(emptyData(), 'wet slate'), {}, { quantity: 2 });
+    const tasted = addConsumption(data, id, { ...base, quantity: 1, impressions: ['c:wet slate'] });
+    if (!tasted.ok) throw new Error(tasted.error);
+    const trimmed = removeCustomImpression(tasted.data, 'WET   slate'.replace(/\s+/, ' '));
+    expect(trimmed.settings.customImpressions).toEqual([]);
+    expect(trimmed.consumptions[0]?.impressions).toEqual(['c:wet slate']);
+    expect(removeCustomImpression(trimmed, 'never there')).toBe(trimmed); // nothing to remove: same object back
   });
 });
 

@@ -132,7 +132,7 @@ export function Dashboard() {
               <span className="hero-label">Bottles in your cellar</span>
               <span className="hero-value">{stats.bottles.toLocaleString()}</span>
               <span className="hero-note">
-                {pluralize(stats.wines, 'wine')} from {pluralize(stats.producers, 'producer')}
+                {pluralize(stats.wines, 'wine')} from {pluralize(stats.producers, 'winery', 'wineries')}
               </span>
             </div>
             <div className="card">
