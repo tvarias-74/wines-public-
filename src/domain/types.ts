@@ -119,15 +119,15 @@ export interface CellarData {
 export const CURRENCIES = ['EUR', 'USD', 'GBP', 'CHF', 'AUD', 'CAD', 'JPY', 'HKD', 'SGD', 'SEK', 'NOK', 'DKK'] as const;
 
 export const BOTTLE_SIZES: { ml: number; label: string }[] = [
-  { ml: 187, label: 'Piccolo (187 ml)' },
-  { ml: 375, label: 'Half (375 ml)' },
+  { ml: 187, label: '187 ml (piccolo)' },
+  { ml: 375, label: '375 ml (half)' },
   { ml: 500, label: '500 ml' },
-  { ml: 750, label: 'Standard (750 ml)' },
+  { ml: 750, label: '750 ml' },
   { ml: 1000, label: '1 L' },
-  { ml: 1500, label: 'Magnum (1.5 L)' },
-  { ml: 3000, label: 'Double magnum (3 L)' },
-  { ml: 4500, label: 'Jeroboam / Rehoboam (4.5 L)' },
-  { ml: 6000, label: 'Imperial (6 L)' },
+  { ml: 1500, label: '1.5 L (magnum)' },
+  { ml: 3000, label: '3 L (double magnum)' },
+  { ml: 4500, label: '4.5 L (jeroboam)' },
+  { ml: 6000, label: '6 L (imperial)' },
 ];
 
 export const STANDARD_BOTTLE_ML = 750;

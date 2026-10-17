@@ -97,7 +97,7 @@ const SAMPLE: SampleProducer[] = [
         grapes: [g('Chardonnay', 100)],
         vintages: [
           { year: 2018, window: [2021, 2026], location: 'Rack B3', buys: [['2020-02-11', 6, 52, 'Direct from the estate']], drank: [['2024-04-20', 2, 'drunk']] },
-          { year: 2020, window: [2024, 2030], peak: [2025, 2028], location: 'Rack B3', buys: [['2022-03-06', 6, 56, 'Direct from the estate']] },
+          { year: 2020, window: [2024, 2030], peak: [2025, 2028], location: 'Rack B3', buys: [['2022-03-06', 6, 56, 'Direct from the estate'], ['2026-03-14', 3, 61, 'Direct from the estate']] },
         ],
       },
     ],
@@ -217,7 +217,7 @@ const SAMPLE: SampleProducer[] = [
         grapes: [g('Assyrtiko', 100)],
         vintages: [
           { year: 2023, window: [2024, 2027], location: 'Fridge 2', buys: [['2024-07-07', 12, 19, 'Direct from the estate']], drank: [['2025-08-02', 2, 'drunk'], ['2026-06-14', 1, 'drunk']] },
-          { year: 2024, window: [2025, 2029], location: 'Fridge 2', buys: [['2025-07-12', 6, 20, 'Direct from the estate']] },
+          { year: 2024, window: [2025, 2029], location: 'Fridge 2', buys: [['2025-07-12', 6, 20, 'Direct from the estate'], ['2026-05-30', 6, 21, 'Direct from the estate']] },
         ],
       },
     ],

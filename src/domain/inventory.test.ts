@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { addPurchase } from './actions';
-import { buildRows, computeStats, filterRows, forecastByYear, groupByProducer, purchaseEntries, purchasesByYear, stockOf } from './inventory';
+import { buildRows, computeStats, filterRows, forecastByYear, groupByProducer, purchaseEntries, purchasesByYear, stockOf, wineTitle } from './inventory';
 import { add, drink, emptyData, NOW } from './helpers.test-util';
 import type { CellarData } from './types';
 
@@ -132,5 +132,16 @@ describe('purchases', () => {
     expect(years.map((y) => y.year)).toEqual([2024, 2021, 2020, 2019, null]);
     expect(years.find((y) => y.year === 2024)).toMatchObject({ bottles: 4, spent: 80, purchases: 1 });
     expect(years.find((y) => y.year === 2020)).toMatchObject({ bottles: 12, spent: 0, pricedBottles: 0 });
+  });
+});
+
+describe('wineTitle', () => {
+  it('names the wine, and the bottle size only when it is not standard', () => {
+    const { data, ids } = cellar();
+    const rows = buildRows(data, NOW);
+    expect(wineTitle(rows.find((r) => r.vintage.id === ids.bg18!)!)).toBe('Château Alpha Grand Vin 2018');
+    expect(wineTitle(rows.find((r) => r.vintage.id === ids.nv!)!)).toBe('Émile Brut Cuvée NV');
+    const mag = add(data, { producer: 'Château Alpha', bottling: 'Grand Vin', year: 2018, sizeMl: 1500 }, { quantity: 1 });
+    expect(wineTitle(buildRows(mag.data, NOW).find((r) => r.vintage.id === mag.id)!)).toBe('Château Alpha Grand Vin 2018 (Magnum)');
   });
 });

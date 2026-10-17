@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addConsumption, addPurchase, addWine, deleteConsumption, deletePurchase, deleteWine, hasSampleData,
-  removeSampleData, updatePurchase, updateSettings, updateWine,
+  markBackedUp, needsBackup, removeSampleData, updatePurchase, updateSettings, updateWine,
 } from './actions';
 import { buildRows, stockOf } from './inventory';
 import { buildSampleData } from './sample';
@@ -210,5 +210,20 @@ describe('settings and sample data', () => {
     expect(stockOf(data, mine.id)).toBe(4);
     expect(stockOf(data, underSample.id)).toBe(2);
     expect(data.producers.map((p) => p.name).sort()).toEqual(['Château Belle-Rive', 'My Own Producer']);
+  });
+});
+
+describe('needsBackup', () => {
+  const day = 86_400_000;
+  it('is quiet for an empty or demo-only cellar', () => {
+    expect(needsBackup(emptyData(), NOW)).toBe(false);
+    expect(needsBackup(buildSampleData(emptyData()), NOW)).toBe(false);
+  });
+  it('asks once there is real data and no backup, or an old one', () => {
+    const { data } = add(emptyData(), {}, { quantity: 1 });
+    expect(needsBackup(data, NOW)).toBe(true);
+    expect(needsBackup(markBackedUp(data, new Date(NOW.getTime() - 5 * day).toISOString()), NOW)).toBe(false);
+    expect(needsBackup(markBackedUp(data, new Date(NOW.getTime() - 45 * day).toISOString()), NOW)).toBe(true);
+    expect(needsBackup(markBackedUp(data, 'garbage'), NOW)).toBe(true);
   });
 });

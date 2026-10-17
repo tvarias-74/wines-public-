@@ -1,6 +1,6 @@
 import type { Bottling, CellarData, Consumption, Producer, Purchase, Vintage, WineType } from './types';
 import { WINE_TYPE_LABEL } from './types';
-import { compareText, formatYear, normalizeText, yearOfDate } from './text';
+import { compareText, formatYear, normalizeText, sizeBadge, yearOfDate } from './text';
 import { STATUS_ORDER, windowOf, windowStatus, type WindowStatus } from './window';
 
 /** One vintage with everything derived from the purchase/consumption ledger. */
@@ -85,8 +85,10 @@ export function buildRows(data: CellarData, now: Date = new Date()): WineRow[] {
   return rows;
 }
 
+/** "Château X Grand Vin 2018", with the bottle size when it isn't a standard 75 cl ("… 2018 (Magnum)"). */
 export function wineTitle(row: Pick<WineRow, 'producer' | 'bottling' | 'vintage'>): string {
-  return `${row.producer.name} ${row.bottling.name} ${formatYear(row.vintage.year)}`;
+  const size = sizeBadge(row.vintage.sizeMl);
+  return `${row.producer.name} ${row.bottling.name} ${formatYear(row.vintage.year)}${size ? ` (${size})` : ''}`;
 }
 
 /** Newest vintage first, non-vintage last. */
@@ -151,13 +153,21 @@ export interface RowFilter {
   includeFinished?: boolean;
 }
 
+// Rows are rebuilt whenever the data changes, so a per-row cache can never go stale.
+const haystacks = new WeakMap<WineRow, string>();
+
 function haystack(row: WineRow): string {
-  const { bottling: b, vintage: v, producer: p } = row;
-  return normalizeText(
-    [p.name, b.name, formatYear(v.year), b.region, b.country, b.appellation, v.location, WINE_TYPE_LABEL[b.type], ...b.grapes.map((g) => g.grape)]
-      .filter(Boolean)
-      .join(' '),
-  );
+  let h = haystacks.get(row);
+  if (h === undefined) {
+    const { bottling: b, vintage: v, producer: p } = row;
+    h = normalizeText(
+      [p.name, b.name, formatYear(v.year), b.region, b.country, b.appellation, v.location, WINE_TYPE_LABEL[b.type], ...b.grapes.map((g) => g.grape)]
+        .filter(Boolean)
+        .join(' '),
+    );
+    haystacks.set(row, h);
+  }
+  return h;
 }
 
 export function filterRows(rows: WineRow[], f: RowFilter): WineRow[] {

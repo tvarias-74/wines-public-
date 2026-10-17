@@ -418,3 +418,14 @@ export function hasSampleData(data: CellarData): boolean {
 export function removeSampleData(data: CellarData): CellarData {
   return prune({ ...data, vintages: data.vintages.filter((v) => !v.id.startsWith(SAMPLE_PREFIX)) });
 }
+
+const BACKUP_REMINDER_DAYS = 30;
+
+/** True when there is real data and it has not been backed up recently. */
+export function needsBackup(data: CellarData, now: Date = new Date()): boolean {
+  const own = data.vintages.some((v) => !v.id.startsWith(SAMPLE_PREFIX));
+  if (!own) return false;
+  const last = data.meta.lastBackupAt ? Date.parse(data.meta.lastBackupAt) : NaN;
+  if (Number.isNaN(last)) return true;
+  return now.getTime() - last > BACKUP_REMINDER_DAYS * 86_400_000;
+}

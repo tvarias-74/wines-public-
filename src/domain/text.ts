@@ -88,12 +88,14 @@ export function sizeBadge(ml: number): string | null {
   return ml >= 1000 ? `${ml / 1000} L` : `${ml} ml`;
 }
 
+/** Whole amounts print without decimals (€425), anything else with all of them (€412.50, never €412.5). */
 export function formatMoney(value: number, currency: string, maxFractionDigits = 2): string {
+  const minimumFractionDigits = Number.isInteger(value) ? 0 : maxFractionDigits;
   try {
     return new Intl.NumberFormat(undefined, {
       style: 'currency',
       currency,
-      minimumFractionDigits: 0,
+      minimumFractionDigits,
       maximumFractionDigits: maxFractionDigits,
     }).format(value);
   } catch {
