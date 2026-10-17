@@ -3014,3 +3014,262 @@ button.word[aria-pressed='true']::before {
 .skip-link:focus {
   transform: none;
 }
+
+/* ---- barcode scanning ------------------------------------------------------------------------ */
+
+.scanner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.scanner-view {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #000;
+  aspect-ratio: 4 / 3;
+}
+
+.scanner-view video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* The frame to aim the barcode into. Drawn with borders, so it needs no colour to be seen. */
+.scanner-guide {
+  position: absolute;
+  inset: 22% 10%;
+  border: 2px solid #fff;
+  border-radius: 10px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.scanner-msg {
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.scanner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.scanner-actions:empty {
+  display: none;
+}
+
+.scan-typed {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 16px;
+}
+
+.scan-typed label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.scan-typed-row {
+  display: flex;
+  gap: 8px;
+}
+
+.scan-typed-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.scan-photo {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.scan-result {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.scan-code {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.scan-code .btn {
+  margin-left: auto;
+}
+
+.scan-heading {
+  font-size: 17px;
+}
+
+.scan-found {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.scan-found h4 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.scan-found .btn-quiet {
+  align-self: flex-start;
+}
+
+.scan-vintage {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.scan-vintage:first-child {
+  border-top: 0;
+}
+
+.scan-vintage-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.scan-vintage-title {
+  font-weight: 650;
+}
+
+.scan-vintage-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.scan-vintage-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.scan-ask > div {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.scan-status {
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.scan-product {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.scan-product > div {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.scan-product-img {
+  flex: none;
+  width: 72px;
+  height: 96px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+
+.scan-guess {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+}
+
+.scan-where {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.scan-next {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.scan-attach {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.scan-attach .search {
+  align-self: stretch;
+}
+
+.scan-attach-list {
+  align-self: stretch;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.barcode-field {
+  display: flex;
+  gap: 8px;
+}
+
+.barcode-field input {
+  flex: 1;
+  min-width: 0;
+}
+
+.barcode-lookup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.barcode-fact {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+@media (max-width: 560px) {
+  .page-actions {
+    flex-wrap: wrap;
+  }
+  .scan-product-img {
+    width: 56px;
+    height: 76px;
+  }
+}

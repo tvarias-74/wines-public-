@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import type { Page } from '@playwright/test';
-import { expect, settle, test } from './fixtures';
+import { ean13, eanPng, expect, settle, test } from './fixtures';
 
 const BASE = 'http://localhost:4180/wines-public-/';
 
@@ -127,4 +127,31 @@ test('"Update now" installs the new version and the cellar is exactly as it was'
     await expect(page.locator('.hero-value')).toHaveText('199');
     await expect(page.locator('.banner', { hasText: 'A new version of Cellar Book is ready' })).toHaveCount(0);
   });
+});
+
+// ---- scanning in a cellar with no signal ------------------------------------------------------------------------------
+
+test('a barcode is read and found with no network at all: the reader comes from the offline cache', async ({ page, context }) => {
+  const code = ean13('376000424001');
+  await page.goto(BASE);
+  await page.getByRole('link', { name: 'Add your first wine' }).click();
+  await page.getByLabel('Winery', { exact: true }).fill('Offline Scanner Estate');
+  await page.getByLabel('Bottling / cuvée').fill('Sans Signal');
+  await page.getByRole('group', { name: 'Colour' }).getByRole('button', { name: 'Red', exact: true }).click();
+  await page.getByLabel('Vintage', { exact: true }).fill('2020');
+  await page.getByLabel('Barcode (optional)').fill(code);
+  await page.getByRole('button', { name: 'Add to cellar' }).click();
+  await expect(page.locator('.detail-grid')).toBeVisible();
+  await settle(page);
+  await page.reload();
+  await page.waitForFunction(() => !!navigator.serviceWorker.controller);
+
+  await context.setOffline(true);
+  await page.goto(BASE + '#/cellar');
+  await page.reload();
+  await page.getByRole('button', { name: 'Scan bottle' }).click();
+  await page.getByRole('dialog').locator('input[type=file]').setInputFiles(eanPng(code));
+  await expect(page.locator('.scan-result')).toContainText('In your cellar', { timeout: 25_000 });
+  await expect(page.locator('.scan-result')).toContainText('Offline Scanner Estate');
+  await context.setOffline(false);
 });

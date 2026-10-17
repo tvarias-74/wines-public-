@@ -42,7 +42,7 @@ test('a backup without photos is plain JSON that holds the whole cellar', async 
   const file = await download.path();
   const json = JSON.parse(readFileSync(file, 'utf8'));
   expect(json.app).toBe('cellar-book');
-  expect(json.schema).toBe(2);
+  expect(json.schema).toBe(3);
   expect(json.vintages.length).toBe(32);
   expect(json.locations.length).toBe(52);
   expect(json.vintages.some((v: { images?: unknown }) => v.images !== undefined)).toBe(true); // it still names the pictures, it just doesn't carry them

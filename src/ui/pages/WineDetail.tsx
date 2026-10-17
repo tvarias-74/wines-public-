@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   addPurchase,
   addReview,
@@ -26,6 +26,7 @@ import { useCellar, useRows } from '../../storage/store';
 import { Icon } from '../Icon';
 import { Card, ConsumeDialog, DateField, EmptyNote, Field, PageHead, RatingBadge, Stepper } from '../components';
 import { grapesLabel, reviewSearches } from '../format';
+import { BarcodeFact } from '../BarcodeFact';
 import { PhotoSlot } from '../LabelImage';
 import { Modal, useConfirm, useToast } from '../overlays';
 import { MoveDialog, PlaceDialog, PlacementPicker } from '../Placement';
@@ -45,6 +46,21 @@ export function WineDetail() {
   const [tasting, setTasting] = useState<Consumption | null>(null);
   const [moving, setMoving] = useState<string | null>(null);
   const [placing, setPlacing] = useState(false);
+
+  // `?add=1` (from a scan) opens "add bottles" straight away.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get('add') !== '1') return;
+    setPurchaseDialog('new');
+    setSearchParams(
+      (p) => {
+        const next = new URLSearchParams(p);
+        next.delete('add');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [searchParams, setSearchParams]);
 
   const row = rows.find((r) => r.vintage.id === id);
   if (!row) {
@@ -298,6 +314,7 @@ export function WineDetail() {
             <dt>Varieties</dt>
             <dd>{bottling.grapes.length ? grapesLabel(bottling.grapes) : <span className="muted">Not recorded</span>}</dd>
           </div>
+          <BarcodeFact bottlingId={bottling.id} codes={bottling.barcodes ?? []} />
           {vintage.notes && (
             <div className="span-2">
               <dt>Notes</dt>

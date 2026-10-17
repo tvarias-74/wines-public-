@@ -40,6 +40,21 @@ test.describe('layout at phone widths', () => {
       await page.locator('.wine-row-main').first().click();
       await expect(page.locator('.detail-grid')).toBeVisible();
       expect(await overflow(page)).toBeLessThanOrEqual(0);
+
+      // the barcode scanner, before and after a scan, and the form's barcode field
+      await page.goto('/#/cellar');
+      await page.getByRole('button', { name: 'Scan bottle' }).click();
+      await expect(page.getByRole('dialog')).toBeVisible();
+      expect(await overflow(page), 'scanner').toBeLessThanOrEqual(0);
+      expect(await page.evaluate(() => document.querySelector('dialog')!.scrollWidth - document.querySelector('dialog')!.clientWidth), 'scanner dialog').toBeLessThanOrEqual(0);
+      await page.getByLabel('Or type the number under the bars').fill('3760009990012');
+      await page.getByRole('button', { name: 'Find it' }).click();
+      await expect(page.locator('.scan-result')).toContainText('Not in your cellar yet');
+      expect(await page.evaluate(() => document.querySelector('dialog')!.scrollWidth - document.querySelector('dialog')!.clientWidth), 'scan result').toBeLessThanOrEqual(0);
+      await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click();
+      await page.goto('/#/wine/new');
+      await expect(page.getByLabel('Barcode (optional)')).toBeVisible();
+      expect(await overflow(page), 'form with barcode').toBeLessThanOrEqual(0);
     });
   }
 });

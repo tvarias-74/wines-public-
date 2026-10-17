@@ -245,3 +245,25 @@ export function applyTheme(pref: ThemePreference): void {
     /* preference just won't persist */
   }
 }
+
+// ---- barcode lookups (a per-device choice, like the theme: it is about this device's network use, not the cellar) ----
+
+export type LookupPreference = 'ask' | 'auto';
+
+/** Whether unknown barcodes are looked up online without asking each time. Off until the person turns it on. */
+export function readLookupPreference(): LookupPreference {
+  try {
+    return localStorage.getItem('cellar-book:lookup') === 'auto' ? 'auto' : 'ask';
+  } catch {
+    return 'ask';
+  }
+}
+
+export function writeLookupPreference(pref: LookupPreference): void {
+  try {
+    if (pref === 'auto') localStorage.setItem('cellar-book:lookup', 'auto');
+    else localStorage.removeItem('cellar-book:lookup');
+  } catch {
+    /* the choice just won't persist */
+  }
+}

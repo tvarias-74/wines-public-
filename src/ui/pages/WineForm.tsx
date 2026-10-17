@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useBlocker, useNavigate, useParams } from 'react-router-dom';
+import { Link, useBlocker, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   addWine,
   findBottling,
@@ -14,17 +14,22 @@ import {
   type PurchaseInput,
   type WineInput,
 } from '../../domain/actions';
-import { stockOf } from '../../domain/inventory';
+import { barcodeProblem, normalizeBarcode } from '../../domain/barcode';
+import { rowsForBarcode, stockOf } from '../../domain/inventory';
 import { parseNumber } from '../../domain/portability';
 import { COMMON_COUNTRIES, COMMON_GRAPES } from '../../domain/reference';
-import { BOTTLE_SIZES, COLOURS, COLOUR_LABEL, WINE_STYLES, WINE_STYLE_LABEL, type Colour, type VintageImages, type WindowSource, type WineStyle } from '../../domain/types';
+import { BOTTLE_SIZES, COLOURS, COLOUR_LABEL, WINE_STYLES, WINE_STYLE_LABEL, type CellarData, type Colour, type VintageImages, type WindowSource, type WineStyle } from '../../domain/types';
 import { compareText, formatYear, normalizeText, pluralize, toIsoDate } from '../../domain/text';
 import { formatWindow, STATUS_LABEL, WINDOW_PRESETS, presetWindow, validateWindow, windowStatus, type DrinkWindow } from '../../domain/window';
 import { useCellar, useRows } from '../../storage/store';
 import { Icon } from '../Icon';
 import { Card, DateField, EmptyNote, Field, PageHead } from '../components';
 import { PhotoSlot, discardImage } from '../LabelImage';
+import { lookupBarcode, LOOKUP_SOURCE } from '../../scan/lookup';
+import { prefillFromProduct, prefillFromSearch, type Prefill } from '../../scan/prefill';
+import { readLookupPreference } from '../../storage/storage';
 import { useConfirm, useToast } from '../overlays';
+import { ScanDialog } from '../Scan';
 import { PlacementPicker } from '../Placement';
 import { StatusBadge, WindowTrack, domainFor, yearPosition } from '../status';
 
@@ -55,6 +60,7 @@ interface FormState {
   price: string;
   date: string;
   merchant: string;
+  barcode: string;
 }
 
 const emptyForm = (): FormState => ({
@@ -82,10 +88,48 @@ const emptyForm = (): FormState => ({
   price: '',
   date: toIsoDate(new Date()),
   merchant: '',
+  barcode: '',
 });
 
 const yearOrUndefined = (s: string): number | undefined => (s.trim() === '' ? undefined : Number(s));
 const grapeRows = (g: { grape: string; percent?: number }[]) => g.map((x) => ({ grape: x.grape, percent: x.percent === undefined ? '' : String(x.percent) }));
+
+/** A form started from a scan or a link: the winery and bottling of a bottling you have, or what a lookup suggested. */
+function formFromPrefill(prefill: Prefill, data: CellarData): FormState {
+  const f = emptyForm();
+  const known = prefill.bottlingId ? data.bottlings.find((b) => b.id === prefill.bottlingId) : undefined;
+  const producer = known ? data.producers.find((p) => p.id === known.producerId) : undefined;
+  if (known && producer) {
+    f.producer = producer.name;
+    f.bottling = known.name;
+  } else {
+    f.producer = prefill.winery ?? '';
+    f.bottling = prefill.bottling ?? '';
+  }
+  if (prefill.year !== undefined) f.year = String(prefill.year);
+  if (prefill.sizeMl !== undefined) f.sizeMl = String(prefill.sizeMl);
+  if (prefill.colour) f.colour = prefill.colour;
+  if (prefill.sparkling) f.sparkling = true;
+  if (prefill.style) f.style = prefill.style;
+  if (prefill.country) f.country = prefill.country;
+  if (prefill.barcode) f.barcode = prefill.barcode;
+  return f;
+}
+
+/** A lookup's suggestion fills only what is still blank: it never overwrites something already typed. */
+function fillBlanks(f: FormState, prefill: Prefill): FormState {
+  return {
+    ...f,
+    producer: f.producer.trim() ? f.producer : (prefill.winery ?? f.producer),
+    bottling: f.bottling.trim() ? f.bottling : (prefill.bottling ?? f.bottling),
+    year: f.year.trim() || f.nv ? f.year : prefill.year !== undefined ? String(prefill.year) : f.year,
+    sizeMl: f.sizeMl === '750' && prefill.sizeMl !== undefined ? String(prefill.sizeMl) : f.sizeMl,
+    colour: f.colour === '' && prefill.colour ? prefill.colour : f.colour,
+    sparkling: f.sparkling || !!prefill.sparkling,
+    style: f.style === '' && prefill.style ? prefill.style : f.style,
+    country: f.country.trim() ? f.country : (prefill.country ?? f.country),
+  };
+}
 
 function toWineInput(f: FormState): WineInput {
   return {
@@ -110,6 +154,7 @@ function toWineInput(f: FormState): WineInput {
     windowSource: f.windowSource,
     notes: f.notes,
     images: f.images,
+    barcodes: f.barcode.trim() ? [f.barcode] : undefined,
   };
 }
 
@@ -141,9 +186,10 @@ function WineFormInner() {
   const navigate = useNavigate();
   const formRef = useRef<HTMLFormElement>(null);
 
+  const [search] = useSearchParams();
   const row = editing ? rows.find((r) => r.vintage.id === id) : undefined;
   const [form, setForm] = useState<FormState>(() => {
-    if (!row) return emptyForm();
+    if (!row) return editing ? emptyForm() : formFromPrefill(prefillFromSearch(search), data);
     const { vintage: v, bottling: b, producer: p, group } = row;
     return {
       ...emptyForm(),
@@ -173,6 +219,10 @@ function WineFormInner() {
   const [presetNote, setPresetNote] = useState<string | null>(null);
   const [plan, setPlan] = useState<PlacementInput[]>([]);
   const [planProblem, setPlanProblem] = useState<string | null>(null);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [barcodeNote, setBarcodeNote] = useState<string | null>(null);
+  const [looking, setLooking] = useState(false);
+  const adopted = useRef<string | null>(form.barcode ? normalizeBarcode(form.barcode) : null); // a barcode that arrived with the form has been dealt with already
 
   // Photos captured in this form are on the device already; if the form is abandoned, they are thrown away.
   const sessionPhotos = useRef(new Set<string>());
@@ -306,6 +356,40 @@ function WineFormInner() {
   const clearWindow = () => {
     setPresetNote(null);
     setForm((f) => ({ ...f, drinkFrom: '', drinkTo: '', peakFrom: '', peakTo: '', windowSource: undefined }));
+  };
+
+  // ---- barcode ----
+  const barcodeCode = normalizeBarcode(form.barcode);
+  const barcodeHeld = barcodeCode ? rowsForBarcode(rows, barcodeCode)[0] : undefined;
+
+  /** Asks Open Food Facts about the barcode and fills what is still blank. Only ever called on the person's say-so. */
+  const lookUp = async (code: string) => {
+    setLooking(true);
+    setBarcodeNote(null);
+    const result = await lookupBarcode(code);
+    setLooking(false);
+    if (result.kind === 'found' && result.product.isWine) {
+      setForm((f) => fillBlanks(f, prefillFromProduct(result.product)));
+      setBarcodeNote(`Filled in what was blank from ${LOOKUP_SOURCE}: “${result.product.title}”. It is typed in by volunteers, so check it against the label.`);
+    } else if (result.kind === 'found') setBarcodeNote(`${LOOKUP_SOURCE} lists this barcode as “${result.product.title}”, which doesn’t look like a wine. Nothing was filled in.`);
+    else if (result.kind === 'not-found') setBarcodeNote(`${LOOKUP_SOURCE} doesn’t list this bottle (common for wines). Fill it in from the label: the barcode is saved with it, so scanning finds it next time.`);
+    else setBarcodeNote(`The lookup couldn’t be made (${result.reason === 'offline' ? 'you seem to be offline' : `${LOOKUP_SOURCE} is not answering`}). You can enter the wine by hand.`);
+  };
+
+  /** A barcode just scanned: a bottling you already have fills the winery and name; otherwise it is looked up if you have said that is fine. */
+  const adoptBarcode = (raw: string) => {
+    const code = normalizeBarcode(raw);
+    if (!code) return;
+    adopted.current = code;
+    const held = rowsForBarcode(rows, code)[0];
+    if (held) {
+      setForm((f) => ({ ...f, barcode: code, producer: held.producer.name, bottling: held.bottling.name }));
+      setBarcodeNote(`You already have this bottle: ${held.producer.name} · ${held.bottling.name}. Its details are filled in.`);
+      return;
+    }
+    setForm((f) => ({ ...f, barcode: code }));
+    setBarcodeNote(null);
+    if (readLookupPreference() === 'auto') void lookUp(code);
   };
 
   // ---- photos ----
@@ -473,6 +557,54 @@ function WineFormInner() {
                 </div>
               )}
             </Field>
+            {!editing && (
+              <div className="field span-2">
+                <label htmlFor="barcode-input">Barcode (optional)</label>
+                <div className="barcode-field">
+                  <input
+                    id="barcode-input"
+                    name="barcode"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    value={form.barcode}
+                    placeholder="The number under the bars"
+                    aria-invalid={!!err('barcode') || (form.barcode.trim() !== '' && !barcodeCode)}
+                    aria-describedby="barcode-help"
+                    onChange={(e) => {
+                      set('barcode', e.target.value);
+                      setBarcodeNote(null);
+                    }}
+                    onBlur={() => {
+                      if (barcodeCode && adopted.current !== barcodeCode) adoptBarcode(barcodeCode);
+                    }}
+                  />
+                  <button type="button" className="btn" onClick={() => setScanOpen(true)}>
+                    <Icon name="barcode" size={18} /> Scan
+                  </button>
+                </div>
+                <p id="barcode-help" className={err('barcode') || (form.barcode.trim() !== '' && !barcodeCode) ? 'field-error' : 'field-hint'}>
+                  {err('barcode') ?? (form.barcode.trim() !== '' && !barcodeCode ? barcodeProblem(form.barcode) : 'On the back label. Saved with the bottling, so scanning the bottle finds it later.')}
+                </p>
+                {barcodeCode && !barcodeHeld && readLookupPreference() !== 'auto' && !looking && !barcodeNote && (
+                  <p className="barcode-lookup">
+                    <button type="button" className="btn btn-sm" onClick={() => void lookUp(barcodeCode)}>
+                      Look it up on {LOOKUP_SOURCE}
+                    </button>
+                    <span className="field-hint">Sends only the barcode number. Wines are only partly covered.</span>
+                  </p>
+                )}
+                {looking && (
+                  <p className="field-hint" role="status">
+                    Looking it up…
+                  </p>
+                )}
+                {barcodeNote && (
+                  <p className="notice" role="status">
+                    <Icon name="info" size={16} /> {barcodeNote}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </Card>
 
@@ -671,6 +803,8 @@ function WineFormInner() {
           </button>
         </div>
       </form>
+
+      {scanOpen && <ScanDialog mode="capture" onClose={() => setScanOpen(false)} onCapture={adoptBarcode} />}
 
       <datalist id="dl-producers">
         {data.producers.map((p) => (

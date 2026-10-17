@@ -5,6 +5,7 @@ A personal wine cellar catalog for the web and your phone. It answers the questi
 - **What do I own?** Bottles per owner family, winery, bottling and vintage, with colour, still or sparkling, origin and the grape varieties of each bottling.
 - **Where is it?** Every bottle can have a place: one of your numbered divisions, or a box on the floor.
 - **What does it look like?** Photograph the front and back label once; the cellar becomes a gallery of labels.
+- **Which bottle is this?** Scan the barcode on the back label: the app finds the wine in your cellar, ready to drink or restock, or looks up one it doesn't know yet.
 - **What did I buy, when, and for how much?** Every purchase is kept with its date, price and merchant.
 - **When should I drink it?** Each vintage has a drinking window, and the app shows what is ready, what is at its peak, what is closing soon, and what you have missed.
 - **What did I think of it?** A rating from 1 to 20, impressions picked from a table of tasting words (and words of your own), free notes, and the scores of Vivino, Robert Parker or Jancis Robinson, which you record next to yours.
@@ -17,6 +18,11 @@ A personal wine cellar catalog for the web and your phone. It answers the questi
 <p>
   <img src="docs/screenshots/map.png" alt="The cellar map: fifty divisions and two boxes, each showing how full it is" width="62%">
   <img src="docs/screenshots/labels-mobile.png" alt="The label gallery on a phone" width="24%">
+</p>
+
+<p>
+  <img src="docs/screenshots/scan-found-mobile.png" alt="A scanned bottle found in the cellar, with its vintages and what is left" width="24%">
+  <img src="docs/screenshots/scan-lookup-mobile.png" alt="A bottle that is not in the cellar yet, suggested from Open Food Facts" width="24%">
 </p>
 
 <p>
@@ -52,13 +58,32 @@ When a new version is available, a banner offers **Update now**. Nothing reloads
 - **From a spreadsheet:** *Settings → Spreadsheet → Import a CSV*. You see a preview, including any rows that will be skipped and why, before anything is imported. See [CSV format](#csv-format).
 - **Try it first:** the welcome screen offers sample wines, removable at any time without touching your own. A sample wine you add bottles, tastings or reviews to becomes yours and stays when the samples are removed.
 
+### Scanning a bottle
+
+**Scan bottle** (on the *Cellar* and *Home* pages) opens the camera. Point it at the barcode on the back label and hold still; it reads the number by itself. If the camera can't be used (blocked, or a computer without one), you can **type the number** under the bars or **use a photo of the barcode** instead.
+
+What happens next depends on whether the cellar knows the bottle:
+
+- **It's in your cellar:** you see every vintage of that wine, how many bottles are left and where they are, with **Drink** (records it, with your rating and notes) and **Add bottles** (restock) right there. **A different vintage** starts the add form from that bottling, so you only type the year.
+- **It isn't:** the app offers to **look it up on [Open Food Facts](https://world.openfoodfacts.org)**, a free community product database. If it finds the wine, **Add this wine** opens the form filled in with what it knows (winery, name, year, size, colour, country). If it doesn't, **Add it as a new wine** opens the form with just the barcode, or **It's a wine I already have** attaches the barcode to one of yours.
+- **Either way the barcode is remembered:** once saved with a wine, scanning that bottle finds it from then on, with no network.
+
+Things worth knowing:
+
+- **Finding a bottle in your own cellar never uses the network.** The reader works offline too (its engine is part of the app).
+- **The online lookup only happens when you ask** (the button in the result), unless you switch on *Settings → Barcode scanning → look up unknown barcodes without asking*. **Only the barcode number is sent** (no cookies, no referrer, nothing about you or your cellar); if a product picture is shown, it is loaded from their image server.
+- **Open Food Facts covers wines only partly.** Many bottles simply aren't listed, and what is listed was typed in by volunteers, so the suggestion is a starting point: check it against the label. Not being listed is normal, not an error: add the wine once and it is recognised from then on.
+- **A barcode identifies the bottling, not the year.** Producers usually keep one barcode across vintages, so a scan finds the wine and you choose (or type) the vintage. Magnums normally have their own barcode: scan one and attach it to the same wine, and the wine's page lists all of its barcodes.
+- You can also add or remove a wine's barcodes from its page, type one into the add form (there is a *Scan* button next to it), search the cellar by typing a barcode, and use a `Barcode` column in a CSV import.
+- A carton (14-digit) barcode isn't a bottle's: it is refused with a message. A number whose last digit doesn't match is refused too, since that is what a misread looks like.
+
 ### Label photos
 
 On a phone, **Take photo** opens the camera, on the front and on the back of the label; **Choose…** picks from the photo library. On a computer a file chooser opens. Do it when you buy the wine or when you put it away.
 
 - Photos stay on the device, like everything else. They are shrunk (1024 px for reading the label, a small thumbnail for lists) and re-saved as JPEG, which also removes any location data in the photo.
 - *Cellar → Wines → Labels* shows the gallery. **More filters → No label photo yet** lists the wines still to do, and the home page counts them under **Loose ends**.
-- “Scan” here means photographing the label. There is no barcode reader yet.
+- A label photo is a picture for you to look at; it isn't read by the app. To identify a bottle, [scan its barcode](#scanning-a-bottle).
 
 ### Where it is: divisions, boxes, the map
 
@@ -111,7 +136,7 @@ Each wine's page has a **Reviews** card. **Look it up** opens a search for that 
 
 ## Your data
 
-**Everything stays on the device you use.** There is no server and no account; the wines and photos are stored in your browser (IndexedDB). This repository and the published site contain none of your data, so it is safe that the repository is public.
+**Everything stays on the device you use.** There is no server and no account; the wines and photos are stored in your browser (IndexedDB). This repository and the published site contain none of your data, so it is safe that the repository is public. The single exception is the optional [barcode lookup](#scanning-a-bottle), which sends one barcode number to Open Food Facts when you ask for it.
 
 That has two consequences you should know about:
 
@@ -143,11 +168,12 @@ A backup with photos is a `.zip` holding `cellar.json` and the pictures; without
 
 The first row names the columns. Only **Producer** (or *Winery*) and **Bottling** (or *Wine*, *Cuvée*) are required; the rest are used when present:
 
-`Producer, Group, Bottling, Vintage, Colour, Sparkling, Style, Type, Size, Country, Region, Appellation, Varieties, Bottles, Price, Purchase date, Merchant, Drink from, Drink to, Peak from, Peak to, Locations, Notes`
+`Producer, Group, Bottling, Vintage, Colour, Sparkling, Style, Type, Size, Country, Region, Appellation, Varieties, Barcode, Bottles, Price, Purchase date, Merchant, Drink from, Drink to, Peak from, Peak to, Locations, Notes`
 
 - Each row adds that many bottles. Rows for the same producer, bottling and vintage are combined.
 - `Group` is the owner family or company. `Colour` is red/white/rosé/orange (also *rouge*, *blanc*, *rosso*…); `Sparkling` is yes/no. A single `Type` column also works (*Red*, *Champagne*, *Sparkling rosé*, *Port*…). A colour that can't be read is imported without one and flagged; it is never guessed.
 - `Locations` reads like `Division 12: 6; Wooden box 3: 4`; the number after the colon is how many bottles are there (the export writes it this way too). Places that don't exist yet are created.
+- `Barcode` (also called EAN, GTIN or UPC) holds the number under the bars; several can be separated by semicolons. **Format that column as text** in your spreadsheet: spreadsheets turn long numbers into things like `3.76E+12`, which can't be read back, and the import tells you when it sees that.
 - `NV` for non-vintage. `Varieties` can read `Merlot 60%; Cabernet Franc 40%`.
 - Dates: `YYYY-MM-DD` or `DD/MM/YYYY` (**day first**), or just a year. Prices accept `12.50` and `12,50`. A dot or comma followed by exactly three digits counts as a thousands separator (`1.500` is fifteen hundred), except after a leading zero (`0.750` is three quarters).
 - Commas, semicolons and tabs all work as separators; use semicolons when exporting for Excel set to a European language. Files saved by Excel in a Western code page are read correctly, and the preview tells you when it had to assume one.
@@ -174,7 +200,7 @@ npm run e2e          # end-to-end tests (see below)
 
 ### End-to-end tests
 
-`npx playwright install chromium` once, then `npm run build && npm run e2e`. They run the real production build in a browser and cover the flows that protect your data and the main features: adding and merging wines, drinking and undoing, the cellar layout and placement rules, the map, label photos, tastings and ratings, reviews, owner groups and filters, backup and restore (with and without photos, and from a version-1 file), CSV import, **storage failures injected into the page** (blocked storage, fallback store, two tabs with a stale one), offline use from a sub-path, and layout at 320–390 px wide. Set `PW_CHROMIUM_PATH` to use an existing Chromium instead of Playwright's.
+`npx playwright install chromium` once, then `npm run build && npm run e2e`. They run the real production build in a browser and cover the flows that protect your data and the main features: adding and merging wines, drinking and undoing, the cellar layout and placement rules, the map, label photos, tastings and ratings, reviews, owner groups and filters, backup and restore (with and without photos, and from a version-1 file), CSV import, **storage failures injected into the page** (blocked storage, fallback store, two tabs with a stale one), barcode scanning (a synthetic camera feed and a picture of a real EAN-13 go through the actual reader, with the lookup mocked, including offline), offline use from a sub-path, and layout at 320–390 px wide. Set `PW_CHROMIUM_PATH` to use an existing Chromium instead of Playwright's.
 
 ### How it is organised
 
@@ -184,16 +210,18 @@ src/domain/    Pure logic with no UI: the data model, drinking-window rules, sto
                handling. Unit-tested.
 src/storage/   IndexedDB persistence (revision-numbered, with a localStorage fallback), the
                photo store, ZIP backups, and the app-wide store.
+src/scan/      Barcode reading (the browser's detector, or a bundled ZXing build), the Open Food
+               Facts lookup and how a scan fills the add form.
 src/ui/        React pages and components, including the charts, which are plain HTML and CSS.
 e2e/           Playwright tests.
 ```
 
-The cellar is one JSON document (schema 2). A wine is described on the levels collectors speak in:
+The cellar is one JSON document (schema 3). A wine is described on the levels collectors speak in:
 
 ```
 Group (owner family or company, optional)
   └─ Producer (winery)
-       └─ Bottling (the label / cuvée: colour, still or sparkling, origin, grape varieties)
+       └─ Bottling (the label / cuvée: colour, still or sparkling, origin, grape varieties, barcodes)
             └─ Vintage (a year in a bottle size: drinking window, label photos, notes)
                  ├─ Purchases     (date, quantity, price per bottle, merchant)
                  ├─ Consumptions  (date, quantity, drank / gave away / sold / spoiled,
@@ -219,7 +247,7 @@ Design decisions worth knowing:
 Not built yet:
 
 - **Syncing between devices.** The biggest gap. Options include a small hosted database with a login, or saving the backup file into a cloud folder automatically. Each has trade-offs around accounts and privacy, so it needs a decision before building.
-- **Barcode scanning.** Photographing the label is built; reading the barcode to look the wine up is not.
+- **A wine database that knows every bottle.** Open Food Facts is free and open but only partly covers wine. Vivino has no public data and the commercial databases need a paid key, so a bottle it doesn't know has to be added by hand once.
 - **Fetching reviews automatically.** See [Reviews](#reviews-from-vivino-robert-parker-jancis-robinson) for why: it is entered by hand, with one-tap searches.
 - Several currencies in one cellar.
-- Importing wine details (varieties, critic windows) from an online database.
+- Importing grape varieties and critic windows from an online database (a lookup fills the name, year, size, colour and country, not these).

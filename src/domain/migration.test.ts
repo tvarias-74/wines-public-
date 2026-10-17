@@ -57,7 +57,7 @@ describe('upgrading a version-1 cellar', () => {
   const b = (id: string) => data.bottlings.find((x) => x.id === id)!;
 
   it('becomes a version-2 cellar with the new, empty parts', () => {
-    expect(data.schema).toBe(2);
+    expect(data.schema).toBe(3);
     expect(data.groups).toEqual([]);
     expect(data.reviews).toEqual([]);
     expect(data.settings).toMatchObject({ currency: 'USD', drinkSoonYears: 2, divisionCapacity: 15, customImpressions: [] });

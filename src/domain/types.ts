@@ -74,6 +74,11 @@ export interface Bottling {
   region?: string;
   appellation?: string;
   grapes: GrapeShare[];
+  /**
+   * Barcodes (canonical GTINs) printed on this bottling's bottles. They are shared by every vintage,
+   * as producers usually keep one barcode across years: scanning finds the bottling, you pick the year.
+   */
+  barcodes?: string[];
 }
 
 /** Ids of photos held in the image store (kept apart from this document because of their size). */
@@ -216,7 +221,7 @@ export interface Meta {
   lastBackupAt?: string;
 }
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export interface CellarData {
   schema: typeof SCHEMA_VERSION;

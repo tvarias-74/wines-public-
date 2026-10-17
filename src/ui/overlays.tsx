@@ -13,6 +13,8 @@ export function Modal({ title, onClose, children, footer, wide }: { title: strin
     // browser would, and focus would otherwise fall to the top of the page.
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     if (!dlg.open) dlg.showModal();
+    // A dialog can name where focus should start (`data-autofocus`), instead of the browser's pick of the first control.
+    dlg.querySelector<HTMLElement>('[data-autofocus]')?.focus({ preventScroll: true });
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {

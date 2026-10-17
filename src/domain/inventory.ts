@@ -251,6 +251,7 @@ function haystack(row: WineRow): string {
         bottlingKindLabel(b),
         ...row.placements.map((x) => x.location.name),
         ...b.grapes.map((g) => g.grape),
+        ...(b.barcodes ?? []),
       ]
         .filter(Boolean)
         .join(' '),
@@ -258,6 +259,16 @@ function haystack(row: WineRow): string {
     haystacks.set(row, h);
   }
   return h;
+}
+
+/**
+ * Every vintage of the bottlings that carry this barcode, most recent year first (non-vintage last).
+ * Finished wines are included: scanning a bottle you have none left of should still say what it is.
+ */
+export function rowsForBarcode(rows: WineRow[], code: string): WineRow[] {
+  return rows
+    .filter((r) => (r.bottling.barcodes ?? []).includes(code))
+    .sort((a, b) => (b.vintage.year ?? -1) - (a.vintage.year ?? -1) || b.vintage.sizeMl - a.vintage.sizeMl);
 }
 
 export function filterRows(rows: WineRow[], f: RowFilter): WineRow[] {

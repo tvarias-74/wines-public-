@@ -1,4 +1,5 @@
 import type { CellarData, Colour, GrapeShare, Location, WineStyle } from './types';
+import { normalizeBarcode } from './barcode';
 import {
   BOTTLE_SIZES,
   BOX_MATERIALS,
@@ -53,7 +54,15 @@ function expect(cond: boolean, message: string): asserts cond {
  * Nothing is guessed: a v1 "sparkling" wine has no colour afterwards, because v1 never recorded it.
  */
 export function migrateToCurrent(raw: unknown): unknown {
-  if (!isObj(raw) || raw.schema !== 1) return raw;
+  let doc = raw;
+  if (isObj(doc) && doc.schema === 1) doc = v1ToV2(doc);
+  // v2 → v3: bottlings may carry barcodes. Nothing to convert; the number is raised so that an older
+  // copy of the app, which would drop them on its next save, refuses the file instead.
+  if (isObj(doc) && doc.schema === 2) doc = { ...doc, schema: 3 };
+  return doc;
+}
+
+function v1ToV2(raw: Json): unknown {
   const arr = (k: string): Json[] => (Array.isArray(raw[k]) ? (raw[k] as unknown[]).filter(isObj) : []);
 
   const bottlings = arr('bottlings').map((b) => {
@@ -139,6 +148,10 @@ export function validateData(input: unknown): CellarData {
     expect(b.style === undefined || oneOf(WINE_STYLES, b.style), `bottlings[${i}] has an unknown style.`);
     expect(optStr(b.country) && optStr(b.region) && optStr(b.appellation), `bottlings[${i}] has a malformed place name.`);
     expect(Array.isArray(b.grapes) && b.grapes.every((g) => isObj(g) && isStr(g.grape) && optNum(g.percent)), `bottlings[${i}] has malformed grapes.`);
+    expect(
+      b.barcodes === undefined || (Array.isArray(b.barcodes) && b.barcodes.every((c) => isStr(c) && normalizeBarcode(c) === c) && new Set(b.barcodes).size === b.barcodes.length),
+      `bottlings[${i}] has a barcode that is not valid.`,
+    );
     expect(producerIds.has(b.producerId), `bottlings[${i}] refers to a producer that is not in the file.`);
     expect(!bottlingIds.has(b.id), `bottlings[${i}] repeats an id.`);
     bottlingIds.add(b.id);
@@ -293,6 +306,7 @@ export const CSV_COLUMNS = [
   'region',
   'appellation',
   'varieties',
+  'barcode',
   'bottles',
   'avg_price_paid',
   'total_spent',
@@ -334,6 +348,7 @@ export function exportInventoryCsv(data: CellarData, delimiter = ',', now: Date 
     r.bottling.region,
     r.bottling.appellation,
     formatGrapes(r.bottling.grapes),
+    (r.bottling.barcodes ?? []).join('; '),
     r.bottles,
     r.avgPrice === null ? '' : Number(r.avgPrice.toFixed(2)),
     r.pricedBottles > 0 ? Number(r.spent.toFixed(2)) : '',
@@ -367,6 +382,7 @@ type Field =
   | 'region'
   | 'appellation'
   | 'grapes'
+  | 'barcode'
   | 'bottles'
   | 'price'
   | 'date'
@@ -393,6 +409,7 @@ const HEADER_ALIASES: Record<Field, string[]> = {
   region: ['region'],
   appellation: ['appellation', 'aoc', 'doc', 'docg', 'denomination', 'aop'],
   grapes: ['varieties', 'variety', 'grapes', 'grape', 'varietals', 'varietal', 'blend', 'cepage', 'cepages', 'grapevarieties'],
+  barcode: ['barcode', 'barcodes', 'ean', 'ean13', 'gtin', 'upc', 'upca', 'ean13barcode'],
   bottles: ['bottles', 'quantity', 'qty', 'count', 'stock', 'instock', 'bottlesinstock', 'nbottles', 'numberofbottles'],
   price: ['price', 'unitprice', 'priceperbottle', 'avgpricepaid', 'avgprice', 'paid', 'cost', 'pricepaid'],
   date: ['purchasedate', 'date', 'bought', 'boughton', 'dateofpurchase', 'lastpurchase', 'purchased'],
@@ -567,7 +584,7 @@ export interface CsvImportReport {
 
 const FIELD_LABEL: Record<Field, string> = {
   producer: 'Producer', group: 'Owner group', bottling: 'Bottling', vintage: 'Vintage', colour: 'Colour', sparkling: 'Sparkling', style: 'Style', type: 'Type',
-  size: 'Size', country: 'Country', region: 'Region', appellation: 'Appellation', grapes: 'Varieties', bottles: 'Bottles', price: 'Price',
+  size: 'Size', country: 'Country', region: 'Region', appellation: 'Appellation', grapes: 'Varieties', barcode: 'Barcode', bottles: 'Bottles', price: 'Price',
   date: 'Purchase date', merchant: 'Merchant', drinkFrom: 'Drink from', drinkTo: 'Drink to', peakFrom: 'Peak from', peakTo: 'Peak to',
   locations: 'Storage places', notes: 'Notes',
 };
@@ -609,6 +626,7 @@ export function importInventoryCsv(data: CellarData, text: string, now: Date = n
   };
   if (!columnOf.has('vintage')) report.warnings.push('No “Vintage” column found, so every wine was imported as non-vintage (NV).');
   let blankVintages = 0;
+  let badBarcodes = 0;
 
   let current = data;
   let unknownColours = 0;
@@ -726,6 +744,13 @@ export function importInventoryCsv(data: CellarData, text: string, now: Date = n
       }
     }
 
+    const barcodes: string[] = [];
+    for (const part of cell(row, 'barcode').split(/[;|,\s]+/).filter(Boolean)) {
+      const code = normalizeBarcode(part);
+      if (code) barcodes.push(code);
+      else badBarcodes++;
+    }
+
     const input: WineInput = {
       producer,
       group: cleanText(cell(row, 'group')),
@@ -745,6 +770,7 @@ export function importInventoryCsv(data: CellarData, text: string, now: Date = n
       peakTo: peakTo as number | undefined,
       windowSource: 'manual',
       notes: cleanText(cell(row, 'notes')),
+      barcodes,
     };
     const purchase: PurchaseInput | undefined =
       quantity > 0 ? { quantity, unitPrice, date, merchant: cleanText(cell(row, 'merchant')) } : undefined;
@@ -766,6 +792,9 @@ export function importInventoryCsv(data: CellarData, text: string, now: Date = n
   }
 
   if (blankVintages > 0) report.warnings.push(`${blankVintages} row${blankVintages === 1 ? ' has' : 's have'} no vintage and ${blankVintages === 1 ? 'was' : 'were'} imported as non-vintage (NV). Write “NV” in the column if that is right.`);
+  if (badBarcodes > 0) {
+    report.warnings.push(`${badBarcodes} barcode${badBarcodes === 1 ? ' was' : 's were'} not valid and left out. Spreadsheets often turn a long number into something like 3.76E+12: format the column as text and export again.`);
+  }
   if (unknownColours > 0) report.warnings.push(`${unknownColours} row${unknownColours === 1 ? ' has' : 's have'} a colour that wasn’t recognised and was left blank.`);
   if (report.imported > 0 && columnOf.has('drinkFrom') === false && columnOf.has('drinkTo') === false) {
     report.warnings.push('No drinking-window columns found. Open a wine to set its window, or use the “estimate” buttons.');

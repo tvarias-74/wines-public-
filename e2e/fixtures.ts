@@ -84,3 +84,72 @@ export function makePng(width = 600, height = 800, rgb: [number, number, number]
 }
 
 export const png = (name = 'label.png', rgb?: [number, number, number]) => ({ name, mimeType: 'image/png', buffer: makePng(600, 800, rgb) });
+
+// ---- barcodes: a real EAN-13, drawn as a picture and as a camera feed ----------------------------------------
+
+/** The 13-digit barcode for 12 digits: the check digit is added. */
+export function ean13(body12: string): string {
+  let sum = 0;
+  for (let i = 0; i < 12; i++) sum += Number(body12[i]) * (i % 2 === 0 ? 1 : 3);
+  return `${body12}${(10 - (sum % 10)) % 10}`;
+}
+
+const L = ['0001101', '0011001', '0010011', '0111101', '0100011', '0110001', '0101111', '0111011', '0110111', '0001011'];
+const R = L.map((c) => [...c].map((b) => (b === '0' ? '1' : '0')).join(''));
+const G = R.map((c) => [...c].reverse().join(''));
+const PARITY = ['LLLLLL', 'LLGLGG', 'LLGGLG', 'LLGGGL', 'LGLLGG', 'LGGLLG', 'LGGGLL', 'LGLGLG', 'LGLGGL', 'LGGLGL'];
+
+/** The bars of an EAN-13 as modules: '1' dark, '0' light (guards, six digits, centre, six digits, guard). */
+function eanModules(code: string): string {
+  const parity = PARITY[Number(code[0])] as string;
+  let out = '101';
+  for (let i = 0; i < 6; i++) out += (parity[i] === 'L' ? L : G)[Number(code[i + 1])];
+  out += '01010';
+  for (let i = 0; i < 6; i++) out += R[Number(code[i + 7])];
+  return `${out}101`;
+}
+
+/** 8-bit grey pixels of the barcode centred on a white page, with the quiet zones a scanner needs. */
+function eanGrey(code: string, width: number, height: number, module: number, barHeight: number): Uint8Array {
+  const modules = eanModules(code);
+  const page = new Uint8Array(width * height).fill(255);
+  const left = Math.floor((width - modules.length * module) / 2);
+  const top = Math.floor((height - barHeight) / 2);
+  for (let y = top; y < top + barHeight; y++) {
+    for (let m = 0; m < modules.length; m++) {
+      if (modules[m] === '1') for (let x = 0; x < module; x++) page[y * width + left + m * module + x] = 0;
+    }
+  }
+  return page;
+}
+
+/** A PNG of the barcode: what a photo of a back label would show, minus the bottle. */
+export function eanPng(code: string, name = 'barcode.png') {
+  const width = 480;
+  const height = 240;
+  const grey = eanGrey(code, width, height, 4, 150);
+  const raw = Buffer.alloc((width + 1) * height);
+  for (let y = 0; y < height; y++) {
+    raw[y * (width + 1)] = 0;
+    Buffer.from(grey.subarray(y * width, (y + 1) * width)).copy(raw, y * (width + 1) + 1);
+  }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 0; // greyscale
+  const buffer = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+  return { name, mimeType: 'image/png', buffer };
+}
+
+/** A camera feed (YUV4MPEG2) that shows the barcode, for Chromium's fake camera. */
+export function eanY4m(code: string, frames = 8): Buffer {
+  const width = 640;
+  const height = 480;
+  const grey = eanGrey(code, width, height, 5, 220);
+  const y = Buffer.from(grey.map((v) => (v === 0 ? 16 : 235)));
+  const chroma = Buffer.alloc((width / 2) * (height / 2), 128);
+  const header = Buffer.from(`YUV4MPEG2 W${width} H${height} F15:1 Ip A1:1 C420jpeg\n`);
+  const frame = Buffer.concat([Buffer.from('FRAME\n'), y, chroma, chroma]);
+  return Buffer.concat([header, ...Array.from({ length: frames }, () => frame)]);
+}

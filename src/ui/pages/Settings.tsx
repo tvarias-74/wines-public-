@@ -6,7 +6,8 @@ import { CURRENCIES, emptyData, type CellarData } from '../../domain/types';
 import { decodeText, formatDate, pluralize, toIsoDate } from '../../domain/text';
 import { createBackupFile, photoStats } from '../../storage/backupFiles';
 import { deleteAllImages } from '../../storage/images';
-import { applyTheme, isPersisted, readTheme, type ThemePreference } from '../../storage/storage';
+import { applyTheme, isPersisted, readLookupPreference, readTheme, writeLookupPreference, type LookupPreference, type ThemePreference } from '../../storage/storage';
+import { LOOKUP_SOURCE } from '../../scan/lookup';
 import { useCellar } from '../../storage/store';
 import { Icon } from '../Icon';
 import { Card, Field, PageHead } from '../components';
@@ -43,6 +44,7 @@ export function Settings() {
   const toast = useToast();
   const [theme, setTheme] = useState<ThemePreference>(readTheme);
   const [persisted, setPersisted] = useState<boolean | null>(null);
+  const [lookup, setLookup] = useState<LookupPreference>(readLookupPreference);
   const [semicolon, setSemicolon] = useState(false);
   const [csv, setCsv] = useState<CsvFile | null>(null);
   const [photos, setPhotos] = useState<{ count: number; bytes: number } | null>(null);
@@ -185,6 +187,24 @@ export function Settings() {
         </div>
       </Section>
 
+      <Section title="Barcode scanning" subtitle="Scanning a bottle finds it in your cellar, on this device, with no network. A bottle you haven’t added yet can be looked up online.">
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={lookup === 'auto'}
+            onChange={(e) => {
+              const next: LookupPreference = e.target.checked ? 'auto' : 'ask';
+              writeLookupPreference(next);
+              setLookup(next);
+            }}
+          />
+          Look up unknown barcodes on {LOOKUP_SOURCE} without asking each time
+        </label>
+        <p className="card-foot muted">
+          {LOOKUP_SOURCE} is a free, community-kept product database. Only the barcode number is sent, nothing about you or your cellar. Wines are only partly covered there, so it often won’t know a bottle. Off, you are asked each time.
+        </p>
+      </Section>
+
       <Section title="Cellar layout" subtitle={layoutCount ? `${pluralize(layoutCount, 'place')} set up. New divisions hold ${data.settings.divisionCapacity} bottles unless you say otherwise.` : 'Set up your numbered divisions and any boxes on the floor, so every bottle has a place.'}>
         <div className="settings-actions">
           <Link className="btn" to="/layout">
@@ -299,7 +319,7 @@ export function Settings() {
             The first row names the columns. Only <strong>Producer</strong> (or “Winery”) and <strong>Bottling</strong> (or “Wine”, “Cuvée”) are required; the rest are used when present:
           </p>
           <p className="mono">
-            Producer, Group, Bottling, Vintage, Colour, Sparkling, Style, Type, Size, Country, Region, Appellation, Varieties, Bottles, Price, Purchase date, Merchant, Drink from, Drink to, Peak from, Peak to, Locations, Notes
+            Producer, Group, Bottling, Vintage, Colour, Sparkling, Style, Type, Size, Country, Region, Appellation, Varieties, Barcode, Bottles, Price, Purchase date, Merchant, Drink from, Drink to, Peak from, Peak to, Locations, Notes
           </p>
           <ul>
             <li>Each row adds that many bottles to the wine. Rows for the same winery, bottling and vintage are combined.</li>
@@ -308,6 +328,9 @@ export function Settings() {
             </li>
             <li>
               <strong>Group</strong> is the family or company behind the winery (Antinori, Karamolegos…). <strong>Locations</strong> can be “Division 12: 6; Wooden box 3: 4” — the number after the colon is how many bottles.
+            </li>
+            <li>
+              <strong>Barcode</strong> (or EAN, GTIN, UPC) is the number under the bars. Format that column as <em>text</em> in your spreadsheet: it turns long numbers into things like 3.76E+12, which can’t be read back.
             </li>
             <li>Write non-vintage wines as “NV”. Varieties can be “Merlot 60%; Cabernet Franc 40%”.</li>
             <li>Dates can be YYYY-MM-DD or DD/MM/YYYY (day first), or just a year. Commas or semicolons both work.</li>

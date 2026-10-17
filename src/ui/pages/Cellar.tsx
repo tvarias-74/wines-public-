@@ -8,6 +8,7 @@ import { useRows } from '../../storage/store';
 import { Icon } from '../Icon';
 import { CellarMap } from '../CellarMap';
 import { Card, EmptyNote, PageHead, WineRowItem } from '../components';
+import { ScanButton } from '../Scan';
 import { bottlingSummary } from '../format';
 import { ShowMore, useIncremental } from '../incremental';
 import { LabelImage } from '../LabelImage';
@@ -156,9 +157,12 @@ export function Cellar() {
         title="Cellar"
         subtitle={`${pluralize(bottles, 'bottle')} · ${pluralize(list.filter((r) => r.bottles > 0).length, 'wine')}${filtered ? ' match' : ''}`}
         actions={
-          <Link className="btn btn-primary" to="/wine/new">
-            <Icon name="plus" size={18} /> Add wine
-          </Link>
+          <>
+            <ScanButton />
+            <Link className="btn btn-primary" to="/wine/new">
+              <Icon name="plus" size={18} /> Add wine
+            </Link>
+          </>
         }
       />
 

@@ -8,6 +8,7 @@ import { STATUS_LABEL, STATUS_ORDER, formatWindow, describeStatus, windowOf } fr
 import { useCellar, useRows } from '../../storage/store';
 import { Icon } from '../Icon';
 import { Card, ConsumeDialog, EmptyNote, PageHead, Stat } from '../components';
+import { ScanButton } from '../Scan';
 import { ColumnChart, RankBars, StackedBar, type SeriesDef } from '../charts';
 import { useConfirm } from '../overlays';
 import { StatusBadge } from '../status';
@@ -87,7 +88,7 @@ export function Dashboard() {
 
   return (
     <>
-      <PageHead title="Your cellar" subtitle={now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} />
+      <PageHead title="Your cellar" subtitle={now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} actions={<ScanButton />} />
 
       {sample && (
         <div className="banner">

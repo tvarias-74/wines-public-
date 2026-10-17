@@ -29,7 +29,8 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}'],
+        // The barcode reader's engine (.wasm) is cached too, so scanning works with no signal in the cellar.
+        globPatterns: ['**/*.{js,css,html,svg,png,webmanifest,wasm}'],
         navigateFallback: 'index.html',
       },
     }),

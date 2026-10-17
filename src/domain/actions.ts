@@ -33,6 +33,7 @@ import {
 } from './types';
 import { cleanText, isValidDate, newId, normalizeText } from './text';
 import { consumedOf, occupancyOf, placedOf, purchasedOf, stockOf } from './inventory';
+import { barcodeProblem, normalizeBarcode } from './barcode';
 import { isCustomImpression, isKnownImpression } from './impressions';
 import { hasWindow, validateWindow, type DrinkWindow } from './window';
 
@@ -63,6 +64,8 @@ export interface WineInput extends DrinkWindow {
   windowSource?: WindowSource;
   notes?: string;
   images?: VintageImages;
+  /** Barcodes read from, or typed from, the bottle. They are added to the bottling; none is ever removed here. */
+  barcodes?: string[];
 }
 
 export interface PurchaseInput {
@@ -115,6 +118,22 @@ function cleanImages(images: VintageImages | undefined): VintageImages | undefin
   return out.front || out.back ? out : undefined;
 }
 
+/** The barcodes of an input in canonical form, without repeats; invalid ones are left out (the validator reports them). */
+function cleanBarcodes(codes: string[] | undefined): string[] {
+  const out: string[] = [];
+  for (const c of codes ?? []) {
+    const n = normalizeBarcode(c);
+    if (n && !out.includes(n)) out.push(n);
+  }
+  return out;
+}
+
+/** A bottling with these barcodes added to the ones it already has. */
+function withBarcodes(b: Bottling, codes: string[]): Bottling {
+  const fresh = codes.filter((c) => !(b.barcodes ?? []).includes(c));
+  return fresh.length ? { ...b, barcodes: [...(b.barcodes ?? []), ...fresh] } : b;
+}
+
 export function validateWineInput(input: WineInput, now: Date = new Date()): FieldErrors {
   const e: FieldErrors = {};
   if (!cleanText(input.producer)) e.producer = 'Enter the producer';
@@ -134,6 +153,13 @@ export function validateWineInput(input: WineInput, now: Date = new Date()): Fie
   }
   const total = input.grapes.reduce((n, g) => n + (g.percent ?? 0), 0);
   if (!e.grapes && total > 100.0001) e.grapes = 'The percentages add up to more than 100';
+  for (const c of input.barcodes ?? []) {
+    const problem = barcodeProblem(c);
+    if (problem) {
+      e.barcode = problem;
+      break;
+    }
+  }
   return e;
 }
 
@@ -332,12 +358,13 @@ export function addWine(
 
   const attrs = bottlingAttrs(input);
   const existingBottling = findBottling(data, producer.id, bottlingName);
+  const codes = cleanBarcodes(input.barcodes);
   let bottling: Bottling;
   if (existingBottling) {
-    bottling = fillBottling(existingBottling, attrs);
+    bottling = withBarcodes(fillBottling(existingBottling, attrs), codes);
     bottlings = bottlings.map((b) => (b.id === bottling.id ? bottling : b));
   } else {
-    bottling = newBottling(producer.id, bottlingName, attrs);
+    bottling = withBarcodes(newBottling(producer.id, bottlingName, attrs), codes);
     bottlings = [...bottlings, bottling];
   }
 
@@ -457,6 +484,34 @@ export function setVintageWindow(data: CellarData, vintageId: string, w: DrinkWi
       ...data,
       vintages: data.vintages.map((v) => (v.id === vintageId ? compact({ ...v, drinkFrom: w.drinkFrom, drinkTo: w.drinkTo, peakFrom: w.peakFrom, peakTo: w.peakTo, windowSource: source }) : v)),
     },
+  };
+}
+
+/**
+ * Records a barcode as one of a bottling's own. A barcode already on another bottling is allowed (a
+ * producer may reuse one) and reported back, so the screen can say that scanning it will offer both.
+ */
+export function addBarcode(data: CellarData, bottlingId: string, raw: string): Result<{ data: CellarData; code: string; added: boolean; alsoOn: Bottling[] }> {
+  const problem = barcodeProblem(raw);
+  if (problem) return fail(problem, { barcode: problem });
+  const code = normalizeBarcode(raw) as string;
+  const bottling = data.bottlings.find((b) => b.id === bottlingId);
+  if (!bottling) return fail('That wine no longer exists');
+  const alsoOn = data.bottlings.filter((b) => b.id !== bottlingId && (b.barcodes ?? []).includes(code));
+  if ((bottling.barcodes ?? []).includes(code)) return { ok: true, data, code, added: false, alsoOn };
+  const next = withBarcodes(bottling, [code]);
+  return { ok: true, data: { ...data, bottlings: data.bottlings.map((b) => (b.id === bottlingId ? next : b)) }, code, added: true, alsoOn };
+}
+
+export function removeBarcode(data: CellarData, bottlingId: string, code: string): CellarData {
+  return {
+    ...data,
+    bottlings: data.bottlings.map((b) => {
+      if (b.id !== bottlingId || !(b.barcodes ?? []).includes(code)) return b;
+      const { barcodes: _old, ...rest } = b;
+      const left = (b.barcodes ?? []).filter((c) => c !== code);
+      return left.length ? { ...rest, barcodes: left } : rest;
+    }),
   };
 }
 
