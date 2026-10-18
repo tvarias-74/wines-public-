@@ -7,6 +7,17 @@ export const TODAY = new Date('2026-10-17T12:00:00');
 export const test = base.extend({
   page: async ({ page }, use) => {
     await page.clock.setFixedTime(TODAY);
+    // E2E_FONT="DejaVu Sans" npm run e2e: run everything in a wider font, as on a Linux CI runner (layouts that fit
+    // in a narrow font can overflow in a wide one).
+    if (process.env.E2E_FONT) {
+      await page.addInitScript((font) => {
+        document.addEventListener('DOMContentLoaded', () => {
+          const style = document.createElement('style');
+          style.textContent = `*:not(svg):not(path) { font-family: "${font}", sans-serif !important; }`;
+          document.head.appendChild(style);
+        });
+      }, process.env.E2E_FONT);
+    }
     await use(page);
   },
 });

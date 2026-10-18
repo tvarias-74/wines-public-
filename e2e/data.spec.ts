@@ -49,6 +49,7 @@ test('a backup without photos is plain JSON that holds the whole cellar', async 
 
   await page.getByRole('button', { name: 'Delete all my data' }).click();
   await page.getByRole('button', { name: 'Delete everything' }).click();
+  await expect(page.locator('.toast', { hasText: 'Your cellar was cleared' })).toBeVisible(); // the pictures go once the empty cellar is saved
   await page.locator('input[type=file]').first().setInputFiles(file);
   await expect(page.getByRole('dialog')).toContainText('no photos'); // the pictures were deleted with everything else, and it says so
   await page.getByRole('button', { name: 'Replace my cellar' }).click();

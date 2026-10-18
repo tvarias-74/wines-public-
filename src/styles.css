@@ -2383,6 +2383,13 @@ dialog.modal::backdrop {
   gap: 6px;
 }
 
+/* Two photo slots share a phone's width: a button's label wraps rather than pushing the page sideways (a wider font needs it). */
+.photo-actions .btn {
+  max-width: 100%;
+  white-space: normal;
+  text-align: center;
+}
+
 .label-img {
   display: block;
 }

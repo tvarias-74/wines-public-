@@ -73,6 +73,8 @@ function useTooltip() {
   const handlers = (title: string, rows: TipRow[], placement: Placement = 'side') => ({
     'data-tip-target': '',
     onPointerEnter: (e: React.PointerEvent) => e.pointerType === 'mouse' && show(e.currentTarget, title, rows, placement),
+    // A pointer resting where a chart appears (after a page change, say) never "enters" it, in some browsers: moving it is enough.
+    onPointerMove: (e: React.PointerEvent) => e.pointerType === 'mouse' && !tip && show(e.currentTarget, title, rows, placement),
     onPointerLeave: (e: React.PointerEvent) => e.pointerType === 'mouse' && hide(),
     onFocus: (e: React.FocusEvent) => show(e.currentTarget, title, rows, placement),
     onBlur: hide,
