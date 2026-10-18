@@ -11,6 +11,10 @@ const executablePath = process.env.PW_CHROMIUM_PATH || undefined;
 
 export default defineConfig({
   testDir: 'e2e',
+  // A hosted CI runner is several times slower than a laptop, and these tests drive a real browser through long flows:
+  // give each step and each test more room there, so a slow machine is not mistaken for a broken app.
+  timeout: process.env.CI ? 90_000 : 30_000,
+  expect: { timeout: process.env.CI ? 15_000 : 5_000 },
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,

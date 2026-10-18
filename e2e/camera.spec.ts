@@ -24,7 +24,8 @@ test('the live camera reads the barcode by itself and finds the wine', async ({ 
   await expect(page.locator('.scan-vintage')).toContainText('2019');
 });
 
-test('closing the scanner switches the camera off', async ({ page }) => {
+test('the camera is off once the scanner is closed, whether it was still looking or had already read the bottle', async ({ page }) => {
+  const tracks = () => page.evaluate(() => (window as unknown as { __tracks: MediaStreamTrack[] }).__tracks);
   await page.addInitScript(() => {
     const w = window as unknown as { __tracks: MediaStreamTrack[] };
     w.__tracks = [];
@@ -36,8 +37,8 @@ test('closing the scanner switches the camera off', async ({ page }) => {
     };
   });
   await openScanner(page);
-  await expect(page.locator('.scanner video')).toBeVisible();
-  await expect.poll(() => page.evaluate(() => (window as unknown as { __tracks: MediaStreamTrack[] }).__tracks.filter((t) => t.readyState === 'live').length)).toBeGreaterThan(0);
+  // The camera has been started. (On a fast machine the barcode in the feed may already be read; either way it is closed below.)
+  await expect.poll(async () => (await tracks()).length, { timeout: 20_000 }).toBeGreaterThan(0);
   await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => (window as unknown as { __tracks: MediaStreamTrack[] }).__tracks.filter((t) => t.readyState === 'live').length)).toBe(0);

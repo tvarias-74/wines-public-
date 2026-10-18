@@ -3,7 +3,7 @@ import { COLOUR_LABEL } from '../domain/types';
 import { SAMPLE_PREFIX, setVintageImage } from '../domain/actions';
 import { formatYear } from '../domain/text';
 import { putImage } from './images';
-import { processImageFile } from './imageProcess';
+import { processCanvas } from './imageProcess';
 
 /**
  * The demo cellar gets drawn placeholder labels (clearly marked "SAMPLE"), so the label gallery has
@@ -20,9 +20,12 @@ const BAND: Record<Colour | 'none', string> = {
 
 function drawLabel(side: 'front' | 'back', producer: string, bottling: string, year: string, place: string, colour: Colour | undefined): HTMLCanvasElement {
   const c = document.createElement('canvas');
-  c.width = 600;
-  c.height = 800;
+  // Drawn at a smaller size (everything below is laid out on 600 × 800 and scaled down): these are
+  // stand-ins, and fewer pixels is a quicker demo on a phone.
+  c.width = 450;
+  c.height = 600;
   const g = c.getContext('2d') as CanvasRenderingContext2D;
+  g.scale(0.75, 0.75);
   g.fillStyle = '#f4ecd8';
   g.fillRect(0, 0, 600, 800);
   g.strokeStyle = BAND[colour ?? 'none'];
@@ -67,34 +70,50 @@ function drawLabel(side: 'front' | 'back', producer: string, bottling: string, y
 
 async function makeImage(id: string, canvas: HTMLCanvasElement): Promise<boolean> {
   try {
-    const png = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
-    if (!png) return false;
-    const p = await processImageFile(png);
-    await putImage({ id, ...p, createdAt: Date.now() });
+    await putImage({ id, ...(await processCanvas(canvas)), createdAt: Date.now() });
     return true;
   } catch {
     return false;
   }
 }
 
+interface Job {
+  vintageId: string;
+  side: 'front' | 'back';
+  id: string;
+  draw: () => HTMLCanvasElement;
+}
+
+const PARALLEL = 4;
+
 /** Adds a front label to every demo wine, and a back label to every third one. */
 export async function attachSampleLabels(data: CellarData): Promise<CellarData> {
-  let next = data;
   const bottlings = new Map(data.bottlings.map((b) => [b.id, b]));
   const producers = new Map(data.producers.map((p) => [p.id, p]));
   const demo: Vintage[] = data.vintages.filter((v) => v.id.startsWith(SAMPLE_PREFIX) && !v.images);
-  let n = 0;
-  for (const v of demo) {
+
+  const jobs: Job[] = [];
+  demo.forEach((v, n) => {
     const b = bottlings.get(v.bottlingId);
     const p = b && producers.get(b.producerId);
-    if (!b || !p) continue;
+    if (!b || !p) return;
     const place = [b.appellation ?? b.region, b.country].filter(Boolean).join(' · ');
-    const frontId = `${SAMPLE_PREFIX}img-${v.id}-front`;
-    if (await makeImage(frontId, drawLabel('front', p.name, b.name, formatYear(v.year), place, b.colour))) next = setVintageImage(next, v.id, 'front', frontId);
-    if (n++ % 3 === 0) {
-      const backId = `${SAMPLE_PREFIX}img-${v.id}-back`;
-      if (await makeImage(backId, drawLabel('back', p.name, b.name, formatYear(v.year), place, b.colour))) next = setVintageImage(next, v.id, 'back', backId);
+    const job = (side: 'front' | 'back'): Job => ({ vintageId: v.id, side, id: `${SAMPLE_PREFIX}img-${v.id}-${side}`, draw: () => drawLabel(side, p.name, b.name, formatYear(v.year), place, b.colour) });
+    jobs.push(job('front'));
+    if (n % 3 === 0) jobs.push(job('back'));
+  });
+
+  // A few at a time: drawing is on the main thread, but encoding is not, so this keeps every core busy.
+  const done: Job[] = [];
+  let next = 0;
+  const worker = async () => {
+    for (let job = jobs[next++]; job; job = jobs[next++]) {
+      if (await makeImage(job.id, job.draw())) done.push(job);
     }
-  }
-  return next;
+  };
+  await Promise.all(Array.from({ length: PARALLEL }, worker));
+
+  let out = data;
+  for (const j of done) out = setVintageImage(out, j.vintageId, j.side, j.id);
+  return out;
 }

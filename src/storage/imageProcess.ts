@@ -59,3 +59,15 @@ export async function processImageFile(file: Blob): Promise<ProcessedImage> {
   const thumb = await render(img, w, h, THUMB_MAX, 0.72);
   return { full: full.blob, thumb: thumb.blob, width: full.width, height: full.height };
 }
+
+/**
+ * The same shrinking for a picture that is already a canvas (the drawn sample labels): there is no
+ * file to decode, so it skips the encode-then-decode round trip that would otherwise be most of the work.
+ */
+export async function processCanvas(canvas: HTMLCanvasElement): Promise<ProcessedImage> {
+  const w = canvas.width;
+  const h = canvas.height;
+  if (!w || !h) throw new Error('That picture has no size.');
+  const [full, thumb] = await Promise.all([render(canvas, w, h, FULL_MAX, 0.78), render(canvas, w, h, THUMB_MAX, 0.72)]);
+  return { full: full.blob, thumb: thumb.blob, width: full.width, height: full.height };
+}

@@ -16,7 +16,8 @@ export { expect };
 export async function loadSample(page: Page) {
   await page.goto('/');
   await page.getByRole('button', { name: 'Explore with sample wines' }).click();
-  await expect(page.locator('.hero-value')).toBeVisible();
+  // Drawing the demo's labels takes a moment, and much longer on a slow machine (a CI runner, a phone).
+  await expect(page.locator('.hero-value')).toBeVisible({ timeout: 45_000 });
 }
 
 export interface WineInput {

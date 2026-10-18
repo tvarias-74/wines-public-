@@ -22,6 +22,7 @@ export function Dashboard() {
   const { apply } = useCellar();
   const confirm = useConfirm();
   const [drinking, setDrinking] = useState<WineRow | null>(null);
+  const [loadingSample, setLoadingSample] = useState(false);
   const year = now.getFullYear();
   const currency = data.settings.currency;
 
@@ -62,8 +63,20 @@ export function Dashboard() {
               <Link className="btn" to="/settings#import">
                 <Icon name="upload" size={18} /> Import a spreadsheet or backup
               </Link>
-              <button className="btn" onClick={() => addSampleWines(apply, data)}>
-                Explore with sample wines
+              <button
+                className="btn"
+                disabled={loadingSample}
+                aria-busy={loadingSample}
+                onClick={async () => {
+                  setLoadingSample(true);
+                  try {
+                    await addSampleWines(apply, data);
+                  } finally {
+                    setLoadingSample(false);
+                  }
+                }}
+              >
+                {loadingSample ? 'Adding the sample wines…' : 'Explore with sample wines'}
               </button>
             </div>
           </div>
